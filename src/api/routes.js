@@ -497,7 +497,7 @@ router.get('/network/stats/:clientName', async (req, res) => {
 router.get('/info', (req, res) => {
     res.json({
         name: 'EFC Backup System API',
-        version: '1.2.0',
+        version: '1.3.0',
         author: 'EFC Informatique',
         website: 'https://efcinfo.com',
         node: process.version,

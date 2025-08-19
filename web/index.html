@@ -408,7 +408,7 @@
                         <button class="btn btn-primary" onclick="refreshNetworkData()">🔄 Actualiser</button>
                     </div>
                     
-                    <!-- Graphiques -->
+                    <!-- Graphiques principaux -->
                     <div class="network-charts">
                         <div class="chart-container">
                             <h3>Vitesse de Transfert (Mbps)</h3>
@@ -423,6 +423,109 @@
                         <div class="chart-container">
                             <h3>Volume de Données Transférées (GB)</h3>
                             <canvas id="volumeChart" width="800" height="400"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Blocs d'analyse avancée -->
+                    <div class="network-analysis">
+                        <!-- Alertes et Problèmes -->
+                        <div class="analysis-card alert-card">
+                            <h3>🚨 Alertes et Problèmes Réseau</h3>
+                            <div class="alert-content">
+                                <div class="alert-item" id="network-alerts">
+                                    <div class="alert-loading">Analyse des problèmes en cours...</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Statistiques de Performance -->
+                        <div class="analysis-card performance-card">
+                            <h3>⚡ Statistiques de Performance</h3>
+                            <div class="performance-metrics" id="performance-metrics">
+                                <div class="metric-item">
+                                    <span class="metric-label">Vitesse Moyenne Globale:</span>
+                                    <span class="metric-value" id="avg-speed-global">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Meilleure Performance:</span>
+                                    <span class="metric-value" id="best-performance">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Client le Plus Rapide:</span>
+                                    <span class="metric-value" id="fastest-client">-</span>
+                                </div>
+                                <div class="metric-item">
+                                    <span class="metric-label">Tendance 7 jours:</span>
+                                    <span class="metric-value" id="trend-7days">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Métriques Temps Réel -->
+                        <div class="analysis-card realtime-card">
+                            <h3>📈 Métriques en Temps Réel</h3>
+                            <div class="realtime-metrics" id="realtime-metrics">
+                                <div class="realtime-item">
+                                    <span class="realtime-label">Backup en Cours:</span>
+                                    <span class="realtime-value" id="active-backup">Aucun</span>
+                                </div>
+                                <div class="realtime-item">
+                                    <span class="realtime-label">Queue de Backups:</span>
+                                    <span class="realtime-value" id="backup-queue">0</span>
+                                </div>
+                                <div class="realtime-item">
+                                    <span class="realtime-label">Connexions Actives:</span>
+                                    <span class="realtime-value" id="active-connections">0</span>
+                                </div>
+                                <div class="realtime-item">
+                                    <span class="realtime-label">Bande Passante:</span>
+                                    <span class="realtime-value" id="bandwidth-usage">0 Mbps</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Analyse des Problèmes -->
+                        <div class="analysis-card problems-card">
+                            <h3>🔍 Analyse des Problèmes</h3>
+                            <div class="problems-analysis" id="problems-analysis">
+                                <div class="problem-category">
+                                    <h4>Clients à Problèmes</h4>
+                                    <div id="problematic-clients">Analyse en cours...</div>
+                                </div>
+                                <div class="problem-category">
+                                    <h4>Recommandations</h4>
+                                    <div id="recommendations">
+                                        <ul id="recommendations-list">
+                                            <li>Analyse des données en cours...</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Résumé Exécutif -->
+                        <div class="analysis-card executive-card">
+                            <h3>📊 Résumé Exécutif</h3>
+                            <div class="executive-summary" id="executive-summary">
+                                <div class="kpi-grid">
+                                    <div class="kpi-item">
+                                        <div class="kpi-value" id="overall-health">-</div>
+                                        <div class="kpi-label">Score de Santé</div>
+                                    </div>
+                                    <div class="kpi-item">
+                                        <div class="kpi-value" id="success-rate">-</div>
+                                        <div class="kpi-label">Taux de Réussite</div>
+                                    </div>
+                                    <div class="kpi-item">
+                                        <div class="kpi-value" id="avg-duration">-</div>
+                                        <div class="kpi-label">Durée Moyenne</div>
+                                    </div>
+                                    <div class="kpi-item">
+                                        <div class="kpi-value" id="data-growth">-</div>
+                                        <div class="kpi-label">Croissance Données</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     
@@ -555,7 +658,7 @@
                     <div class="footer-links">
                         <a href="https://efcinfo.com" target="_blank">Site web</a>
                         <a href="mailto:erick@efcinfo.com">Support</a>
-                        <span id="app-version">Version 1.2.0</span>
+                        <span id="app-version">Version 1.3.0</span>
                     </div>
                 </div>
             </footer>
