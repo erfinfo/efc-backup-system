@@ -2,6 +2,7 @@ const { Client } = require('ssh2');
 const path = require('path');
 const fs = require('fs');
 const { createClientLogger } = require('../utils/logger');
+const { addNetworkStats } = require('../utils/database');
 
 class LinuxBackupClient {
     constructor(clientConfig) {
@@ -103,11 +104,14 @@ class LinuxBackupClient {
         }
     }
 
-    async createBackup(backupType = 'full', customFolders = null) {
+    async createBackup(backupType = 'full', customFolders = null, backupIdParam = null) {
         try {
             this.logger.info(`Démarrage du backup ${backupType} pour ${this.config.name}`);
             
-            const backupId = `backup_${Date.now()}`;
+            // Variables pour le tracking réseau
+            const backupStartTime = new Date();
+            const backupId = backupIdParam || `backup_${Date.now()}`;
+            
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const backupDir = `/tmp/efc-backup-${this.config.name}-${timestamp}`;
             
@@ -134,9 +138,10 @@ class LinuxBackupClient {
             }
 
             let totalSize = 0;
+            let totalFilesCount = 0;
             const backupResults = [];
 
-            // Backup de chaque dossier
+            // Backup de chaque dossier avec tracking
             for (const folder of foldersToBackup) {
                 if (!folder.trim()) continue;
                 
@@ -149,6 +154,8 @@ class LinuxBackupClient {
                     const folderName = folder.replace(/\//g, '_').replace(/^_/, '');
                     const targetDir = `${backupDir}/${folderName}`;
                     
+                    const folderStartTime = new Date();
+                    
                     // Utiliser rsync ou cp selon la disponibilité
                     let command;
                     try {
@@ -160,15 +167,31 @@ class LinuxBackupClient {
                     
                     await this.executeCommand(command);
                     
-                    // Calculer la taille du backup
+                    // Calculer la taille et le nombre de fichiers du backup
                     const sizeOutput = await this.executeCommand(`du -sb "${targetDir}" | cut -f1`);
                     const folderSize = parseInt(sizeOutput.trim()) || 0;
                     totalSize += folderSize;
                     
-                    this.logger.info(`Backup terminé pour ${folder}: ${(folderSize / 1024 / 1024).toFixed(2)} MB`);
+                    // Compter les fichiers
+                    let filesCount = 0;
+                    try {
+                        const filesOutput = await this.executeCommand(`find "${targetDir}" -type f | wc -l`);
+                        filesCount = parseInt(filesOutput.trim()) || 0;
+                        totalFilesCount += filesCount;
+                    } catch (error) {
+                        this.logger.warn(`Impossible de compter les fichiers dans ${targetDir}:`, error);
+                    }
+                    
+                    const folderDuration = (new Date() - folderStartTime) / 1000; // en secondes
+                    const folderSpeedMbps = folderSize > 0 ? (folderSize * 8) / (folderDuration * 1024 * 1024) : 0;
+                    
+                    this.logger.info(`Backup terminé pour ${folder}: ${(folderSize / 1024 / 1024).toFixed(2)} MB, ${filesCount} fichiers, ${Math.round(folderSpeedMbps)} Mbps`);
                     backupResults.push({
                         folder,
                         size: folderSize,
+                        filesCount: filesCount,
+                        duration: folderDuration,
+                        speedMbps: Math.round(folderSpeedMbps * 100) / 100,
                         status: 'success'
                     });
                     
@@ -176,6 +199,10 @@ class LinuxBackupClient {
                     this.logger.error(`Erreur lors du backup de ${folder}:`, error);
                     backupResults.push({
                         folder,
+                        size: 0,
+                        filesCount: 0,
+                        duration: 0,
+                        speedMbps: 0,
                         status: 'error',
                         error: error.message
                     });
@@ -233,21 +260,53 @@ class LinuxBackupClient {
             // Nettoyer le dossier temporaire
             await this.executeCommand(`rm -rf ${backupDir}`);
             
+            // Calculer les statistiques réseau globales
+            const backupEndTime = new Date();
+            const totalDuration = (backupEndTime - backupStartTime) / 1000; // en secondes
+            const avgSpeedMbps = totalSize > 0 ? (totalSize * 8) / (totalDuration * 1024 * 1024) : 0;
+
+            // Sauvegarder les statistiques réseau
+            if (totalSize > 0) {
+                try {
+                    await addNetworkStats({
+                        backup_id: backupId,
+                        client_name: this.config.name,
+                        bytes_transferred: totalSize,
+                        transfer_speed_mbps: Math.round(avgSpeedMbps * 100) / 100,
+                        duration_seconds: Math.round(totalDuration),
+                        files_count: totalFilesCount,
+                        started_at: backupStartTime.toISOString(),
+                        completed_at: backupEndTime.toISOString()
+                    });
+                    
+                    this.logger.info(`Statistiques réseau sauvegardées: ${Math.round(totalSize / (1024 * 1024))} MB, ${Math.round(avgSpeedMbps)} Mbps, ${Math.round(totalDuration)}s, ${totalFilesCount} fichiers`);
+                } catch (error) {
+                    this.logger.warn(`Erreur lors de la sauvegarde des statistiques réseau:`, error);
+                }
+            }
+            
             const result = {
                 backupId,
                 type: backupType,
                 client: this.config.name,
                 status: 'completed',
-                startTime: new Date(),
-                endTime: new Date(),
+                startTime: backupStartTime,
+                endTime: backupEndTime,
                 size: finalSize,
                 archivePath: `/tmp/${archiveName}`,
                 results: backupResults,
                 totalFolders: foldersToBackup.length,
-                successfulFolders: backupResults.filter(r => r.status === 'success').length
+                successfulFolders: backupResults.filter(r => r.status === 'success').length,
+                // Ajouter les statistiques réseau au résultat
+                networkStats: {
+                    bytesTransferred: totalSize,
+                    transferSpeedMbps: Math.round(avgSpeedMbps * 100) / 100,
+                    durationSeconds: Math.round(totalDuration),
+                    filesCount: totalFilesCount
+                }
             };
 
-            this.logger.info(`Backup terminé avec succès: ${(finalSize / 1024 / 1024).toFixed(2)} MB`);
+            this.logger.info(`Backup terminé avec succès: ${(finalSize / 1024 / 1024).toFixed(2)} MB, vitesse moyenne: ${Math.round(avgSpeedMbps)} Mbps`);
             return result;
 
         } catch (error) {
@@ -303,6 +362,60 @@ class LinuxBackupClient {
             this.logger.info(`Fichier de backup distant supprimé: ${remotePath}`);
         } catch (error) {
             this.logger.warn(`Impossible de supprimer le fichier distant: ${error.message}`);
+        }
+    }
+
+    async performFullBackup(options = {}) {
+        const backupId = options.backupId || `backup_${this.config.name}_${Date.now()}`;
+        
+        try {
+            await this.connect();
+            const result = await this.createBackup('full', options.folders, backupId);
+            await this.disconnect();
+            
+            return {
+                success: true,
+                backupId: backupId,
+                metadata: {
+                    size_mb: Math.round(result.size / (1024 * 1024)),
+                    file_count: result.networkStats?.filesCount || 0,
+                    duration_seconds: result.networkStats?.durationSeconds || 0,
+                    speed_mbps: result.networkStats?.transferSpeedMbps || 0
+                },
+                path: result.archivePath,
+                results: result.results
+            };
+        } catch (error) {
+            this.logger.error('Erreur lors du backup complet:', error);
+            throw error;
+        }
+    }
+
+    async performIncrementalBackup(lastBackupPath, options = {}) {
+        const backupId = options.backupId || `backup_${this.config.name}_${Date.now()}`;
+        
+        try {
+            await this.connect();
+            // Pour Linux, on utilise la même logique que le backup complet
+            // mais on pourrait implémenter une vraie logique incrémentielle avec rsync
+            const result = await this.createBackup('incremental', options.folders, backupId);
+            await this.disconnect();
+            
+            return {
+                success: true,
+                backupId: backupId,
+                metadata: {
+                    size_mb: Math.round(result.size / (1024 * 1024)),
+                    file_count: result.networkStats?.filesCount || 0,
+                    duration_seconds: result.networkStats?.durationSeconds || 0,
+                    speed_mbps: result.networkStats?.transferSpeedMbps || 0
+                },
+                path: result.archivePath,
+                results: result.results
+            };
+        } catch (error) {
+            this.logger.error('Erreur lors du backup incrémentiel:', error);
+            throw error;
         }
     }
 }

@@ -2,6 +2,7 @@ const { NodeSSH } = require('node-ssh');
 const fs = require('fs').promises;
 const path = require('path');
 const { logger } = require('../utils/logger');
+const { addNetworkStats } = require('../utils/database');
 
 class WindowsBackupClient {
     constructor(config) {
@@ -53,8 +54,13 @@ class WindowsBackupClient {
         }
     }
 
-    async backupFolders(folders, localDestination) {
+    async backupFolders(folders, localDestination, backupId = null) {
         const backupResults = [];
+        
+        // Variables pour le tracking réseau
+        const backupStartTime = new Date();
+        let totalBytesTransferred = 0;
+        let totalFilesCount = 0;
         
         for (const folder of folders) {
             try {
@@ -65,35 +71,105 @@ class WindowsBackupClient {
                 const destPath = path.join(localDestination, this.config.name, folderName);
                 await fs.mkdir(destPath, { recursive: true });
 
-                // Utiliser SCP pour copier les fichiers
+                // Variables pour tracker ce dossier spécifique
+                const folderStartTime = new Date();
+                let folderBytes = 0;
+                let folderFiles = 0;
+
+                // Utiliser SCP pour copier les fichiers avec tracking
                 await this.ssh.getDirectory(destPath, folder, {
                     recursive: true,
                     concurrency: 10,
                     tick: (localPath, remotePath, error) => {
                         if (error) {
                             logger.warn(`Erreur lors de la copie de ${remotePath}:`, error);
+                        } else {
+                            // Compter les fichiers transférés
+                            folderFiles++;
+                            totalFilesCount++;
                         }
                     }
                 });
 
+                // Calculer la taille du dossier copié
+                folderBytes = await this.calculateDirectorySize(destPath);
+                totalBytesTransferred += folderBytes;
+
+                const folderDuration = (new Date() - folderStartTime) / 1000; // en secondes
+                const folderSpeedMbps = folderBytes > 0 ? (folderBytes * 8) / (folderDuration * 1024 * 1024) : 0;
+
                 backupResults.push({
                     folder,
                     status: 'success',
-                    destination: destPath
+                    destination: destPath,
+                    bytesTransferred: folderBytes,
+                    filesCount: folderFiles,
+                    duration: folderDuration,
+                    speedMbps: Math.round(folderSpeedMbps * 100) / 100
                 });
                 
-                logger.info(`Backup réussi pour ${folder}`);
+                logger.info(`Backup réussi pour ${folder} - ${Math.round(folderBytes / (1024 * 1024))} MB, ${folderFiles} fichiers, ${Math.round(folderSpeedMbps)} Mbps`);
             } catch (error) {
                 logger.error(`Erreur lors du backup de ${folder}:`, error);
                 backupResults.push({
                     folder,
                     status: 'failed',
-                    error: error.message
+                    error: error.message,
+                    bytesTransferred: 0,
+                    filesCount: 0,
+                    duration: 0,
+                    speedMbps: 0
                 });
             }
         }
 
+        // Calculer les statistiques globales
+        const backupEndTime = new Date();
+        const totalDuration = (backupEndTime - backupStartTime) / 1000; // en secondes
+        const avgSpeedMbps = totalBytesTransferred > 0 ? (totalBytesTransferred * 8) / (totalDuration * 1024 * 1024) : 0;
+
+        // Sauvegarder les statistiques réseau si un backupId est fourni
+        if (backupId && totalBytesTransferred > 0) {
+            try {
+                await addNetworkStats({
+                    backup_id: backupId,
+                    client_name: this.config.name,
+                    bytes_transferred: totalBytesTransferred,
+                    transfer_speed_mbps: Math.round(avgSpeedMbps * 100) / 100,
+                    duration_seconds: Math.round(totalDuration),
+                    files_count: totalFilesCount,
+                    started_at: backupStartTime.toISOString(),
+                    completed_at: backupEndTime.toISOString()
+                });
+                
+                logger.info(`Statistiques réseau sauvegardées pour ${this.config.name}: ${Math.round(totalBytesTransferred / (1024 * 1024))} MB, ${Math.round(avgSpeedMbps)} Mbps, ${Math.round(totalDuration)}s`);
+            } catch (error) {
+                logger.warn(`Erreur lors de la sauvegarde des statistiques réseau:`, error);
+            }
+        }
+
         return backupResults;
+    }
+
+    async calculateDirectorySize(dirPath) {
+        let totalSize = 0;
+        
+        try {
+            const stats = await fs.stat(dirPath);
+            if (stats.isFile()) {
+                return stats.size;
+            } else if (stats.isDirectory()) {
+                const files = await fs.readdir(dirPath);
+                for (const file of files) {
+                    const filePath = path.join(dirPath, file);
+                    totalSize += await this.calculateDirectorySize(filePath);
+                }
+            }
+        } catch (error) {
+            logger.warn(`Erreur lors du calcul de la taille de ${dirPath}:`, error);
+        }
+        
+        return totalSize;
     }
 
     async createVSSSnapshot() {
@@ -173,7 +249,7 @@ class WindowsBackupClient {
     }
 
     async performFullBackup(options = {}) {
-        const backupId = `backup_${this.config.name}_${Date.now()}`;
+        const backupId = options.backupId || `backup_${this.config.name}_${Date.now()}`;
         const backupPath = path.join(options.backupPath || '/backups', backupId);
         
         try {
@@ -208,7 +284,7 @@ class WindowsBackupClient {
                 'C:\\Windows\\System32\\config'
             ];
             
-            const folderResults = await this.backupFolders(folders, backupPath);
+            const folderResults = await this.backupFolders(folders, backupPath, backupId);
             
             // 5. Backup du registre
             const registryPath = path.join(backupPath, 'registry');
@@ -256,6 +332,8 @@ class WindowsBackupClient {
     }
 
     async performIncrementalBackup(lastBackupPath, options = {}) {
+        const backupId = options.backupId || `backup_${this.config.name}_${Date.now()}`;
+        
         try {
             logger.info(`Démarrage du backup incrémentiel pour ${this.config.name}`);
             

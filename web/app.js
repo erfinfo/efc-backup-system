@@ -433,7 +433,7 @@ async function loadSystemInfo() {
         ]);
 
         // Mise à jour de la version dans le footer
-        updateElement('app-version', `Version ${apiInfo.version || '1.1.0'}`);
+        updateElement('app-version', `Version ${apiInfo.version || '1.2.0'}`);
 
         // Mise à jour des informations serveur
         updateElement('os-info', `${systemStatus.system.os}`);
@@ -558,7 +558,7 @@ function exportConfig() {
     // Exporter la configuration système
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.1.0',
+        version: '1.2.0',
         server: {
             port: 3000,
             host: '0.0.0.0',

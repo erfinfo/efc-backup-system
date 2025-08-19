@@ -199,6 +199,7 @@ class BackupScheduler {
 
             const backupOptions = {
                 type: type,
+                backupId: clientBackupId,
                 backupPath: process.env.BACKUP_PATH || '/var/backups/efc',
                 useVSS: process.env.USE_VSS !== 'false',
                 createImage: type === 'full' && process.env.CREATE_SYSTEM_IMAGE === 'true',
