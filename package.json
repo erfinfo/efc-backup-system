@@ -73,7 +73,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/efc/backup-system.git"
+    "url": "https://github.com/erfinfo/efc-backup-system.git"
   },
   "engines": {
     "node": ">=16.0.0",

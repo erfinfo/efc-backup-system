@@ -54,10 +54,9 @@ brew install node
 ### 2. Installation du Système EFC Backup
 
 ```bash
-# Cloner ou copier le projet
+# Cloner le projet depuis GitHub
 cd /opt  # ou C:\ sur Windows
-git clone [URL_DU_REPO] efc-backup
-# OU extraire l'archive fournie
+git clone https://github.com/erfinfo/efc-backup-system.git efc-backup
 
 # Accéder au dossier
 cd efc-backup
@@ -178,7 +177,40 @@ npm install -g pm2
 pm2 start src/index.js --name efc-backup
 pm2 save
 pm2 startup
+# Suivre les instructions affichées pour configurer le démarrage automatique
 ```
+
+### Configuration PM2 pour le Démarrage Automatique
+
+Pour que le serveur EFC Backup démarre automatiquement au boot du système :
+
+```bash
+# Installer PM2 globalement
+npm install -g pm2
+
+# Démarrer le service EFC Backup avec PM2
+pm2 start src/index.js --name efc-backup
+
+# Sauvegarder la configuration PM2
+pm2 save
+
+# Configurer le démarrage automatique
+pm2 startup
+
+# Exécuter la commande affichée par pm2 startup (exemple) :
+# sudo env PATH=$PATH:/usr/bin /usr/local/lib/node_modules/pm2/bin/pm2 startup systemd -u root --hp /root
+
+# Vérifier le statut
+pm2 status
+```
+
+**Commandes PM2 utiles :**
+- `pm2 status` - Voir le statut des processus
+- `pm2 logs efc-backup` - Voir les logs en temps réel  
+- `pm2 restart efc-backup` - Redémarrer le service
+- `pm2 stop efc-backup` - Arrêter le service
+- `pm2 delete efc-backup` - Supprimer le service
+- `pm2 monit` - Interface de monitoring
 
 ### Mode Développement
 
@@ -327,8 +359,8 @@ pm2 stop efc-backup
 cp -r config config.backup
 cp .env .env.backup
 
-# Mettre à jour
-git pull  # ou extraire la nouvelle version
+# Mettre à jour depuis GitHub
+git pull origin master
 npm install
 
 # Redémarrer
@@ -494,4 +526,6 @@ iftop -i eth0
 
 **Version** : 1.0.0  
 **Dernière mise à jour** : 2024  
-**Support** : support@efc-backup.com
+**Support** : erick@efcinfo.com  
+**Repository GitHub** : https://github.com/erfinfo/efc-backup-system  
+**Site web** : https://efcinfo.com
