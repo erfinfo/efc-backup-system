@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Fond carré vert EFC -->
+  <rect width="200" height="200" fill="#5d8052" rx="20"/>
+  
+  <!-- Cercle intérieur plus clair -->
+  <circle cx="100" cy="100" r="85" fill="#6a8f5e" opacity="0.5"/>
+  
+  <!-- Lettre E -->
+  <rect x="50" y="60" width="40" height="10" fill="white"/>
+  <rect x="50" y="60" width="10" height="80" fill="white"/>
+  <rect x="50" y="95" width="35" height="10" fill="white"/>
+  <rect x="50" y="130" width="40" height="10" fill="white"/>
+  
+  <!-- Lettre F -->
+  <rect x="100" y="60" width="40" height="10" fill="white"/>
+  <rect x="100" y="60" width="10" height="80" fill="white"/>
+  <rect x="100" y="95" width="35" height="10" fill="white"/>
+  
+  <!-- Lettre C -->
+  <path d="M 150 70 Q 150 60, 160 60 L 180 60 Q 190 60, 190 70 L 190 75 L 180 75 Q 175 70, 170 70 L 165 70 Q 160 70, 160 75 L 160 125 Q 160 130, 165 130 L 170 130 Q 175 130, 180 125 L 190 125 L 190 130 Q 190 140, 180 140 L 160 140 Q 150 140, 150 130 Z" fill="white"/>
+  
+  <!-- Texte BACKUP en bas -->
+  <text x="100" y="170" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#b4e3a5" text-anchor="middle">
+    BACKUP SYSTEM
+  </text>
+</svg>

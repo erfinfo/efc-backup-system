@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EFC Backup System - Dashboard | EFC Informatique</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="stylesheet" href="styles.css">
+    <meta name="description" content="Système professionnel de backup automatique pour clients Windows - EFC Informatique">
+</head>
+<body>
+    <div class="app">
+        <nav class="sidebar">
+            <div class="logo">
+                <img src="logo.png" alt="EFC Informatique Logo" style="width: 100px; height: 100px; display: block; object-fit: contain;">
+                <div>
+                    <h2>EFC Backup</h2>
+                    <p style="font-size: 0.75rem; color: rgba(180, 227, 165, 0.8); margin: 0; font-family: 'Noto Sans', sans-serif;">Informatique</p>
+                </div>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="#dashboard" class="active">Dashboard</a></li>
+                <li><a href="#clients">Clients</a></li>
+                <li><a href="#backups">Backups</a></li>
+                <li><a href="#schedule">Planification</a></li>
+                <li><a href="#logs">Logs</a></li>
+                <li><a href="#settings">Paramètres</a></li>
+                <li><a href="#config">Configuration</a></li>
+                <li><a href="#system">Système</a></li>
+            </ul>
+        </nav>
+        
+        <main class="main-content">
+            <header class="header">
+                <div>
+                    <h1>Dashboard</h1>
+                    <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">Système de backup professionnel EFC Informatique</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="startManualBackup()">
+                        🔄 Backup Manuel
+                    </button>
+                    <span class="status-indicator" id="status">
+                        <span class="status-dot"></span>
+                        Système Actif
+                    </span>
+                </div>
+            </header>
+            
+            <div class="dashboard-grid">
+                <div class="stat-card">
+                    <h3>Clients Actifs</h3>
+                    <p class="stat-number" id="active-clients">0</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Backups Aujourd'hui</h3>
+                    <p class="stat-number" id="today-backups">0</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Espace Utilisé</h3>
+                    <p class="stat-number" id="storage-used">0 GB</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Dernière Exécution</h3>
+                    <p class="stat-text" id="last-run">-</p>
+                </div>
+            </div>
+            
+            <div class="content-sections">
+                <section id="dashboard-section" class="content-section active">
+                    <div class="recent-backups">
+                        <h2>Backups Récents</h2>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Client</th>
+                                    <th>Type</th>
+                                    <th>Statut</th>
+                                    <th>Taille</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-backups-list">
+                                <!-- Rempli dynamiquement -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                
+                <section id="clients-section" class="content-section">
+                    <div class="section-header">
+                        <h2>Gestion des Clients</h2>
+                        <button class="btn btn-primary" onclick="showAddClientModal()">
+                            Ajouter Client
+                        </button>
+                    </div>
+                    <div id="clients-list" class="clients-grid">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </section>
+                
+                <section id="backups-section" class="content-section">
+                    <h2>Historique des Backups</h2>
+                    <div class="filters">
+                        <input type="date" id="filter-date" class="filter-input">
+                        <select id="filter-client" class="filter-select">
+                            <option value="">Tous les clients</option>
+                        </select>
+                        <select id="filter-status" class="filter-select">
+                            <option value="">Tous les statuts</option>
+                            <option value="success">Réussi</option>
+                            <option value="failed">Échoué</option>
+                            <option value="pending">En cours</option>
+                        </select>
+                    </div>
+                    <div id="backups-history">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </section>
+                
+                <section id="schedule-section" class="content-section">
+                    <h2>Planification des Backups</h2>
+                    <div id="schedule-list">
+                        <!-- Rempli dynamiquement -->
+                    </div>
+                </section>
+                
+                <section id="logs-section" class="content-section">
+                    <h2>Logs Système</h2>
+                    <div class="log-viewer">
+                        <div class="log-controls">
+                            <select id="log-client" class="filter-select">
+                                <option value="">Logs globaux</option>
+                            </select>
+                            <select id="log-type" class="filter-select">
+                                <option value="client">Général</option>
+                                <option value="backup">Backup</option>
+                                <option value="error">Erreurs</option>
+                            </select>
+                            <select id="log-level" class="filter-select">
+                                <option value="all">Tous</option>
+                                <option value="info">Info</option>
+                                <option value="warn">Warning</option>
+                                <option value="error">Erreur</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="refreshLogs()">🔄 Actualiser</button>
+                            <button class="btn btn-secondary" onclick="clearLogs()">🗑️ Vider</button>
+                        </div>
+                        <div id="log-content" class="log-content">
+                            <!-- Rempli dynamiquement -->
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="settings-section" class="content-section">
+                    <h2>Paramètres</h2>
+                    <div class="settings-form">
+                        <div class="form-group">
+                            <label>Chemin de stockage des backups</label>
+                            <input type="text" id="backup-path" class="form-input" value="/backups">
+                        </div>
+                        <div class="form-group">
+                            <label>Rétention des backups (jours)</label>
+                            <input type="number" id="retention-days" class="form-input" value="30">
+                        </div>
+                        <div class="form-group">
+                            <label>Email de notification</label>
+                            <input type="email" id="notification-email" class="form-input">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
+                    </div>
+                </section>
+                
+                <section id="config-section" class="content-section">
+                    <h2>Configuration Serveur</h2>
+                    
+                    <!-- Configuration générale -->
+                    <div class="config-form-container">
+                        <div class="config-section">
+                            <h3>🌐 Configuration Serveur</h3>
+                            <form id="server-config-form" class="config-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Port d'écoute</label>
+                                        <input type="number" id="server-port-input" class="form-input" value="3000" min="1" max="65535">
+                                        <small>Port sur lequel le serveur écoute (redémarrage requis)</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Hôte d'écoute</label>
+                                        <select id="server-host-input" class="form-input">
+                                            <option value="0.0.0.0">0.0.0.0 (Toutes interfaces)</option>
+                                            <option value="127.0.0.1">127.0.0.1 (Localhost uniquement)</option>
+                                        </select>
+                                        <small>Interface réseau d'écoute du serveur</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Environnement</label>
+                                        <select id="server-env-input" class="form-input">
+                                            <option value="development">Development</option>
+                                            <option value="production">Production</option>
+                                        </select>
+                                        <small>Mode d'exécution du serveur</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Niveau de logs</label>
+                                        <select id="log-level-input" class="form-input">
+                                            <option value="error">Error</option>
+                                            <option value="warn">Warning</option>
+                                            <option value="info">Info</option>
+                                            <option value="debug">Debug</option>
+                                        </select>
+                                        <small>Niveau de détail des logs</small>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="config-section">
+                            <h3>💾 Configuration Backup</h3>
+                            <form id="backup-config-form" class="config-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Chemin de stockage</label>
+                                        <input type="text" id="backup-path-input" class="form-input" value="/tmp/efc-backups-test">
+                                        <small>Dossier de stockage des backups</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Rétention (jours)</label>
+                                        <input type="number" id="retention-days-input" class="form-input" value="30" min="1" max="365">
+                                        <small>Durée de conservation des backups</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Backups parallèles maximum</label>
+                                        <input type="number" id="parallel-backups-input" class="form-input" value="2" min="1" max="10">
+                                        <small>Nombre de backups simultanés autorisés</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Support VSS</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="vss-enabled-input" checked>
+                                                <span class="checkmark"></span>
+                                                Activer Volume Shadow Copy (Windows)
+                                            </label>
+                                        </div>
+                                        <small>Active le VSS pour les fichiers ouverts</small>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="config-section">
+                            <h3>📧 Configuration Notifications</h3>
+                            <form id="notification-config-form" class="config-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Email de notification</label>
+                                        <input type="email" id="notification-email-input" class="form-input" placeholder="admin@efcinfo.com">
+                                        <small>Email de destination pour les alertes</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>SMTP Activé</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="smtp-enabled-input">
+                                                <span class="checkmark"></span>
+                                                Activer les notifications email
+                                            </label>
+                                        </div>
+                                        <small>Active l'envoi d'emails automatiques</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Serveur SMTP</label>
+                                        <input type="text" id="smtp-host-input" class="form-input" placeholder="smtp.gmail.com">
+                                        <small>Adresse du serveur SMTP</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Port SMTP</label>
+                                        <input type="number" id="smtp-port-input" class="form-input" value="587" min="1" max="65535">
+                                        <small>Port du serveur SMTP (587, 465, 25)</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Utilisateur SMTP</label>
+                                        <input type="text" id="smtp-user-input" class="form-input" placeholder="user@gmail.com">
+                                        <small>Nom d'utilisateur pour l'authentification</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Mot de passe SMTP</label>
+                                        <input type="password" id="smtp-pass-input" class="form-input" placeholder="••••••••">
+                                        <small>Mot de passe SMTP ou token d'application</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Options de notifications</label>
+                                        <div class="checkbox-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="notify-success-input">
+                                                <span class="checkmark"></span>
+                                                Notifier les backups réussis
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="notify-failure-input" checked>
+                                                <span class="checkmark"></span>
+                                                Notifier les échecs de backup
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="notify-start-input">
+                                                <span class="checkmark"></span>
+                                                Notifier le début des backups
+                                            </label>
+                                        </div>
+                                        <small>Types de notifications à envoyer</small>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="config-section">
+                            <h3>📊 Configuration Monitoring</h3>
+                            <form id="monitoring-config-form" class="config-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Intervalle Health Check (secondes)</label>
+                                        <input type="number" id="health-interval-input" class="form-input" value="30" min="10" max="3600">
+                                        <small>Fréquence des vérifications système</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Rétention des métriques (jours)</label>
+                                        <input type="number" id="metrics-retention-input" class="form-input" value="30" min="1" max="365">
+                                        <small>Durée de conservation des métriques</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Seuil CPU alerte (%)</label>
+                                        <input type="number" id="cpu-alert-input" class="form-input" value="80" min="1" max="100">
+                                        <small>Seuil d'alerte pour l'utilisation CPU</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Seuil RAM alerte (%)</label>
+                                        <input type="number" id="memory-alert-input" class="form-input" value="85" min="1" max="100">
+                                        <small>Seuil d'alerte pour l'utilisation mémoire</small>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Seuil disque alerte (%)</label>
+                                        <input type="number" id="disk-alert-input" class="form-input" value="80" min="1" max="100">
+                                        <small>Seuil d'alerte pour l'utilisation disque</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Seuil disque critique (%)</label>
+                                        <input type="number" id="disk-critical-input" class="form-input" value="95" min="1" max="100">
+                                        <small>Seuil critique pour l'utilisation disque</small>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Actions de configuration -->
+                        <div class="config-actions">
+                            <div class="action-group">
+                                <button type="button" class="btn btn-secondary" onclick="loadServerConfig()">
+                                    🔄 Recharger
+                                </button>
+                                <button type="button" class="btn btn-warning" onclick="resetConfigToDefaults()">
+                                    ⚠️ Réinitialiser
+                                </button>
+                                <button type="button" class="btn btn-success" onclick="testConfiguration()">
+                                    🧪 Tester Config
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="saveServerConfig()">
+                                    💾 Sauvegarder Configuration
+                                </button>
+                            </div>
+                            <div class="config-warning">
+                                <p><strong>⚠️ Attention :</strong> Certaines modifications nécessitent un redémarrage du serveur pour prendre effet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="system-section" class="content-section">
+                    <h2>État du Système</h2>
+                    
+                    <!-- Résumé général -->
+                    <div class="system-overview">
+                        <div class="system-card">
+                            <h3>🖥️ Serveur</h3>
+                            <div id="server-info">
+                                <p><strong>Système:</strong> <span id="os-info">-</span></p>
+                                <p><strong>Architecture:</strong> <span id="arch-info">-</span></p>
+                                <p><strong>Uptime:</strong> <span id="uptime-info">-</span></p>
+                                <p><strong>Node.js:</strong> <span id="node-version">-</span></p>
+                            </div>
+                        </div>
+                        
+                        <div class="system-card">
+                            <h3>⚡ Performance</h3>
+                            <div id="performance-info">
+                                <p><strong>CPU:</strong> <span id="cpu-info">-</span></p>
+                                <p><strong>RAM:</strong> <span id="memory-info">-</span></p>
+                                <p><strong>Disque backup:</strong> <span id="disk-info">-</span></p>
+                                <p><strong>Processus Node:</strong> <span id="process-memory">-</span></p>
+                            </div>
+                        </div>
+                        
+                        <div class="system-card">
+                            <h3>🔧 Services</h3>
+                            <div id="services-info">
+                                <p><strong>Monitoring:</strong> <span id="monitoring-status" class="badge">-</span></p>
+                                <p><strong>Planificateur:</strong> <span id="scheduler-status" class="badge">-</span></p>
+                                <p><strong>Base de données:</strong> <span id="database-status" class="badge">-</span></p>
+                                <p><strong>Health Check:</strong> <span id="health-status" class="badge">-</span></p>
+                            </div>
+                        </div>
+                        
+                        <div class="system-card">
+                            <h3>📊 Statistiques</h3>
+                            <div id="stats-info">
+                                <p><strong>Clients actifs:</strong> <span id="clients-count">-</span></p>
+                                <p><strong>Backups totaux:</strong> <span id="backups-count">-</span></p>
+                                <p><strong>Espace utilisé:</strong> <span id="storage-usage">-</span></p>
+                                <p><strong>Dernier backup:</strong> <span id="last-backup">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Configuration actuelle -->
+                    <div class="system-config">
+                        <h3>⚙️ Configuration</h3>
+                        <div class="config-grid">
+                            <div class="config-item">
+                                <strong>Port serveur:</strong>
+                                <span id="server-port">-</span>
+                            </div>
+                            <div class="config-item">
+                                <strong>Chemin backups:</strong>
+                                <span id="backup-path-config">-</span>
+                            </div>
+                            <div class="config-item">
+                                <strong>Rétention:</strong>
+                                <span id="retention-config">-</span>
+                            </div>
+                            <div class="config-item">
+                                <strong>Backups parallèles:</strong>
+                                <span id="parallel-config">-</span>
+                            </div>
+                            <div class="config-item">
+                                <strong>VSS activé:</strong>
+                                <span id="vss-config">-</span>
+                            </div>
+                            <div class="config-item">
+                                <strong>Notifications:</strong>
+                                <span id="notifications-config">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Actions système -->
+                    <div class="system-actions">
+                        <h3>🔧 Actions</h3>
+                        <div class="action-buttons">
+                            <button class="btn btn-secondary" onclick="refreshSystemInfo()">🔄 Actualiser</button>
+                            <button class="btn btn-primary" onclick="performHealthCheck()">🏥 Health Check</button>
+                            <button class="btn btn-warning" onclick="downloadLogs()">📋 Télécharger Logs</button>
+                            <button class="btn btn-success" onclick="exportConfig()">💾 Exporter Config</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            
+            <!-- Footer EFC Branding -->
+            <footer class="efc-footer">
+                <div class="footer-content">
+                    <div class="footer-brand">
+                        <img src="logo.png" alt="EFC Informatique" class="footer-logo" style="width: 80px; height: 80px; display: block; object-fit: contain;">
+                        <div>
+                            <strong>EFC Informatique</strong>
+                            <p>Solutions informatiques professionnelles</p>
+                        </div>
+                    </div>
+                    <div class="footer-links">
+                        <a href="https://efcinfo.com" target="_blank">Site web</a>
+                        <a href="mailto:erick@efcinfo.com">Support</a>
+                        <span id="app-version">Version 1.0.0</span>
+                    </div>
+                </div>
+            </footer>
+        </main>
+    </div>
+    
+    <!-- Modal Ajout Client -->
+    <div id="add-client-modal" class="modal">
+        <div class="modal-content">
+            <h2>Ajouter un Client</h2>
+            <form id="add-client-form">
+                <div class="form-group">
+                    <label>Nom du client</label>
+                    <input type="text" name="name" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Adresse IP</label>
+                    <input type="text" name="ip" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Port SSH</label>
+                    <input type="number" name="port" value="22" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Nom d'utilisateur</label>
+                    <input type="text" name="username" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe</label>
+                    <input type="password" name="password" required class="form-input">
+                </div>
+                <div class="form-group">
+                    <label>Système d'exploitation</label>
+                    <select name="os_type" class="form-input" onchange="updateDefaultFolders(this)">
+                        <option value="windows">Windows</option>
+                        <option value="linux">Linux</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Type de backup</label>
+                    <select name="backup_type" class="form-input">
+                        <option value="full">Complet</option>
+                        <option value="incremental">Incrémentiel</option>
+                        <option value="differential">Différentiel</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Dossiers à sauvegarder (séparés par des virgules)</label>
+                    <textarea name="folders" id="backup-folders" class="form-input" rows="3">C:\Users, C:\ProgramData</textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
