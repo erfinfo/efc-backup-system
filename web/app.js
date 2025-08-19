@@ -429,7 +429,7 @@ async function loadSystemInfo() {
         ]);
 
         // Mise à jour de la version dans le footer
-        updateElement('app-version', `Version ${apiInfo.version || '1.0.0'}`);
+        updateElement('app-version', `Version ${apiInfo.version || '1.0.1'}`);
 
         // Mise à jour des informations serveur
         updateElement('os-info', `${systemStatus.system.os}`);
