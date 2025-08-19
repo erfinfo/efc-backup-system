@@ -554,7 +554,7 @@ function exportConfig() {
     // Exporter la configuration système
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.0.0',
+        version: '1.0.1',
         server: {
             port: 3000,
             host: '0.0.0.0',
