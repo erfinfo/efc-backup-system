@@ -1,6 +1,6 @@
 {
   "name": "efc-backup-system",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Système de backup automatique pour clients Windows avec interface web standalone",
   "main": "src/index.js",
   "scripts": {

@@ -524,7 +524,7 @@ iftop -i eth0
 
 ---
 
-**Version** : 1.0.0  
+**Version** : 1.0.1  
 **Dernière mise à jour** : 2024  
 **Support** : erick@efcinfo.com  
 **Repository GitHub** : https://github.com/erfinfo/efc-backup-system  
