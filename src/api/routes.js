@@ -13,7 +13,9 @@ const {
     getSchedules,
     getActivityLogs,
     getSetting,
-    setSetting
+    setSetting,
+    getNetworkStats,
+    getNetworkStatsByClient
 } = require('../utils/database');
 const backupScheduler = require('../backup/scheduler');
 const systemMonitor = require('../monitor/systemMonitor');
@@ -467,11 +469,35 @@ router.post('/test/client-connection', async (req, res) => {
     }
 });
 
+// Routes Network Statistics
+router.get('/network/stats', async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 50;
+        const stats = await getNetworkStats(limit);
+        res.json(stats);
+    } catch (error) {
+        logger.error('Erreur API network stats:', error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des statistiques réseau' });
+    }
+});
+
+router.get('/network/stats/:clientName', async (req, res) => {
+    try {
+        const { clientName } = req.params;
+        const limit = parseInt(req.query.limit) || 10;
+        const stats = await getNetworkStatsByClient(clientName, limit);
+        res.json(stats);
+    } catch (error) {
+        logger.error(`Erreur API network stats for ${req.params.clientName}:`, error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des statistiques réseau du client' });
+    }
+});
+
 // Routes d'information système
 router.get('/info', (req, res) => {
     res.json({
         name: 'EFC Backup System API',
-        version: '1.0.1',
+        version: '1.1.0',
         author: 'EFC Informatique',
         website: 'https://efcinfo.com',
         node: process.version,

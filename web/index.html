@@ -26,6 +26,7 @@
                 <li><a href="#logs">Logs</a></li>
                 <li><a href="#settings">Paramètres</a></li>
                 <li><a href="#config">Configuration</a></li>
+                <li><a href="#network">Trafic Réseau</a></li>
                 <li><a href="#system">Système</a></li>
             </ul>
         </nav>
@@ -393,6 +394,64 @@
                     </div>
                 </section>
                 
+                <section id="network-section" class="content-section">
+                    <h2>📊 Trafic Réseau des Backups</h2>
+                    
+                    <!-- Sélecteur de client -->
+                    <div class="network-controls">
+                        <div class="form-group" style="display: inline-block; margin-right: 1rem;">
+                            <label for="network-client-select">Client :</label>
+                            <select id="network-client-select" class="form-input" style="width: 200px;">
+                                <option value="">Tous les clients</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="refreshNetworkData()">🔄 Actualiser</button>
+                    </div>
+                    
+                    <!-- Graphiques -->
+                    <div class="network-charts">
+                        <div class="chart-container">
+                            <h3>Vitesse de Transfert (Mbps)</h3>
+                            <canvas id="speedChart" width="800" height="400"></canvas>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <h3>Durée des Backups (minutes)</h3>
+                            <canvas id="durationChart" width="800" height="400"></canvas>
+                        </div>
+                        
+                        <div class="chart-container">
+                            <h3>Volume de Données Transférées (GB)</h3>
+                            <canvas id="volumeChart" width="800" height="400"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- Tableau des derniers backups -->
+                    <div class="network-table">
+                        <h3>📋 Derniers Backups - Détails Réseau</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Client</th>
+                                    <th>Type</th>
+                                    <th>Vitesse (Mbps)</th>
+                                    <th>Durée</th>
+                                    <th>Volume (GB)</th>
+                                    <th>Fichiers</th>
+                                </tr>
+                            </thead>
+                            <tbody id="network-stats-table">
+                                <tr>
+                                    <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                                        Chargement des données réseau...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                
                 <section id="system-section" class="content-section">
                     <h2>État du Système</h2>
                     
@@ -496,7 +555,7 @@
                     <div class="footer-links">
                         <a href="https://efcinfo.com" target="_blank">Site web</a>
                         <a href="mailto:erick@efcinfo.com">Support</a>
-                        <span id="app-version">Version 1.0.1</span>
+                        <span id="app-version">Version 1.1.0</span>
                     </div>
                 </div>
             </footer>
@@ -555,6 +614,8 @@
         </div>
     </div>
     
+    <!-- Chart.js for network traffic visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

@@ -103,6 +103,21 @@ class Database {
                 metric_unit TEXT,
                 tags TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`,
+
+            // Table des statistiques réseau par backup
+            `CREATE TABLE IF NOT EXISTS network_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                backup_id TEXT NOT NULL,
+                client_name TEXT NOT NULL,
+                bytes_transferred INTEGER DEFAULT 0,
+                transfer_speed_mbps REAL DEFAULT 0,
+                duration_seconds INTEGER DEFAULT 0,
+                files_count INTEGER DEFAULT 0,
+                started_at DATETIME,
+                completed_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (backup_id) REFERENCES backups(backup_id)
             )`
         ];
 
@@ -115,6 +130,9 @@ class Database {
             'CREATE INDEX IF NOT EXISTS idx_backups_client_name ON backups(client_name)',
             'CREATE INDEX IF NOT EXISTS idx_backups_status ON backups(status)',
             'CREATE INDEX IF NOT EXISTS idx_backups_created_at ON backups(created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_network_stats_backup_id ON network_stats(backup_id)',
+            'CREATE INDEX IF NOT EXISTS idx_network_stats_client_name ON network_stats(client_name)',
+            'CREATE INDEX IF NOT EXISTS idx_network_stats_created_at ON network_stats(created_at)',
             'CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp)'
         ];
@@ -512,6 +530,51 @@ const initDatabase = async () => {
     }
 };
 
+// Fonctions pour les statistiques réseau
+async function addNetworkStats(networkData) {
+    const {
+        backup_id,
+        client_name,
+        bytes_transferred,
+        transfer_speed_mbps,
+        duration_seconds,
+        files_count,
+        started_at,
+        completed_at
+    } = networkData;
+
+    return await db.run(`
+        INSERT INTO network_stats (
+            backup_id, client_name, bytes_transferred, transfer_speed_mbps,
+            duration_seconds, files_count, started_at, completed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+        backup_id, client_name, bytes_transferred, transfer_speed_mbps,
+        duration_seconds, files_count, started_at, completed_at
+    ]);
+}
+
+async function getNetworkStats(limit = 50) {
+    return await db.all(`
+        SELECT ns.*, b.type as backup_type
+        FROM network_stats ns
+        LEFT JOIN backups b ON ns.backup_id = b.backup_id
+        ORDER BY ns.created_at DESC
+        LIMIT ?
+    `, [limit]);
+}
+
+async function getNetworkStatsByClient(clientName, limit = 10) {
+    return await db.all(`
+        SELECT ns.*, b.type as backup_type
+        FROM network_stats ns
+        LEFT JOIN backups b ON ns.backup_id = b.backup_id
+        WHERE ns.client_name = ?
+        ORDER BY ns.created_at DESC
+        LIMIT ?
+    `, [clientName, limit]);
+}
+
 module.exports = {
     db,
     initDatabase,
@@ -543,5 +606,10 @@ module.exports = {
     
     // Metrics
     addMetric,
-    getMetrics
+    getMetrics,
+    
+    // Network Stats
+    addNetworkStats,
+    getNetworkStats,
+    getNetworkStatsByClient
 };

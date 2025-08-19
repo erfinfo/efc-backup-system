@@ -74,6 +74,7 @@ function navigateToSection(section) {
         'logs': 'Logs Système',
         'settings': 'Paramètres',
         'config': 'Configuration Serveur',
+        'network': 'Trafic Réseau',
         'system': 'État du Système'
     };
     header.textContent = sectionTitles[section] || 'Dashboard';
@@ -215,6 +216,9 @@ function loadSectionData(section) {
             break;
         case 'config':
             loadServerConfig();
+            break;
+        case 'network':
+            await loadNetworkTraffic();
             break;
         case 'system':
             loadSystemInfo();
@@ -429,7 +433,7 @@ async function loadSystemInfo() {
         ]);
 
         // Mise à jour de la version dans le footer
-        updateElement('app-version', `Version ${apiInfo.version || '1.0.1'}`);
+        updateElement('app-version', `Version ${apiInfo.version || '1.1.0'}`);
 
         // Mise à jour des informations serveur
         updateElement('os-info', `${systemStatus.system.os}`);
@@ -554,7 +558,7 @@ function exportConfig() {
     // Exporter la configuration système
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.0.1',
+        version: '1.1.0',
         server: {
             port: 3000,
             host: '0.0.0.0',
@@ -1226,3 +1230,329 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// Variables globales pour les graphiques
+let speedChart = null;
+let durationChart = null;
+let volumeChart = null;
+
+// Fonction principale pour charger les données réseau
+async function loadNetworkTraffic() {
+    try {
+        // Charger la liste des clients
+        await loadNetworkClients();
+        
+        // Charger les données par défaut (tous les clients)
+        await refreshNetworkData();
+        
+    } catch (error) {
+        console.error('Erreur lors du chargement du trafic réseau:', error);
+        showNotification('Erreur lors du chargement des données réseau', 'error');
+    }
+}
+
+async function loadNetworkClients() {
+    try {
+        const response = await fetch(`${API_URL}/clients`);
+        if (response.ok) {
+            const clients = await response.json();
+            const select = document.getElementById('network-client-select');
+            
+            // Vider et ajouter l'option "Tous"
+            select.innerHTML = '<option value="">Tous les clients</option>';
+            
+            // Ajouter chaque client
+            clients.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.name;
+                option.textContent = `${client.name} (${client.os_type})`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des clients réseau:', error);
+    }
+}
+
+async function refreshNetworkData() {
+    const selectedClient = document.getElementById('network-client-select')?.value;
+    
+    try {
+        showNotification('Chargement des données réseau...', 'info');
+        
+        // Charger les statistiques
+        let networkStats = [];
+        if (selectedClient) {
+            const response = await fetch(`${API_URL}/network/stats/${encodeURIComponent(selectedClient)}?limit=10`);
+            networkStats = await response.json();
+        } else {
+            const response = await fetch(`${API_URL}/network/stats?limit=50`);
+            networkStats = await response.json();
+        }
+        
+        // Mettre à jour les graphiques
+        updateNetworkCharts(networkStats);
+        
+        // Mettre à jour le tableau
+        updateNetworkTable(networkStats);
+        
+        showNotification('Données réseau actualisées', 'success');
+        
+    } catch (error) {
+        console.error('Erreur lors de l\'actualisation des données réseau:', error);
+        
+        // Générer des données simulées pour démonstration
+        const mockData = generateMockNetworkData();
+        updateNetworkCharts(mockData);
+        updateNetworkTable(mockData);
+        
+        showNotification('Données simulées affichées (API non disponible)', 'warning');
+    }
+}
+
+function generateMockNetworkData() {
+    const clients = ['Client-A', 'Client-B', 'Client-C', 'Serveur-Linux'];
+    const backupTypes = ['full', 'incremental', 'differential'];
+    const mockData = [];
+    
+    for (let i = 0; i < 10; i++) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        
+        mockData.push({
+            backup_id: `backup_${Date.now()}_${i}`,
+            client_name: clients[Math.floor(Math.random() * clients.length)],
+            backup_type: backupTypes[Math.floor(Math.random() * backupTypes.length)],
+            bytes_transferred: Math.floor(Math.random() * 50000000000) + 1000000000, // 1GB à 50GB
+            transfer_speed_mbps: Math.floor(Math.random() * 100) + 10, // 10-110 Mbps
+            duration_seconds: Math.floor(Math.random() * 3600) + 300, // 5min à 1h
+            files_count: Math.floor(Math.random() * 50000) + 1000,
+            started_at: date.toISOString(),
+            completed_at: new Date(date.getTime() + Math.random() * 3600000).toISOString(),
+            created_at: date.toISOString()
+        });
+    }
+    
+    return mockData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+function updateNetworkCharts(data) {
+    const ctx1 = document.getElementById('speedChart').getContext('2d');
+    const ctx2 = document.getElementById('durationChart').getContext('2d');
+    const ctx3 = document.getElementById('volumeChart').getContext('2d');
+    
+    // Préparer les données
+    const labels = data.map((d, index) => {
+        const date = new Date(d.created_at || d.started_at);
+        return `${d.client_name} - ${date.toLocaleDateString()}`;
+    });
+    
+    const speeds = data.map(d => d.transfer_speed_mbps || 0);
+    const durations = data.map(d => Math.round((d.duration_seconds || 0) / 60)); // en minutes
+    const volumes = data.map(d => Math.round((d.bytes_transferred || 0) / (1024 * 1024 * 1024) * 100) / 100); // en GB
+    
+    // Détruire les anciens graphiques
+    if (speedChart) speedChart.destroy();
+    if (durationChart) durationChart.destroy();
+    if (volumeChart) volumeChart.destroy();
+    
+    // Graphique vitesse
+    speedChart = new Chart(ctx1, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Vitesse (Mbps)',
+                data: speeds,
+                backgroundColor: 'rgba(93, 128, 82, 0.8)',
+                borderColor: 'rgba(93, 128, 82, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Vitesse de Transfert par Backup'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Mbps'
+                    }
+                }
+            }
+        }
+    });
+    
+    // Graphique durée
+    durationChart = new Chart(ctx2, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Durée (minutes)',
+                data: durations,
+                backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                borderColor: 'rgba(52, 152, 219, 1)',
+                borderWidth: 2,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Durée des Backups'
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Minutes'
+                    }
+                }
+            }
+        }
+    });
+    
+    // Graphique volume
+    volumeChart = new Chart(ctx3, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.client_name),
+            datasets: [{
+                label: 'Volume (GB)',
+                data: volumes,
+                backgroundColor: [
+                    'rgba(93, 128, 82, 0.8)',
+                    'rgba(52, 152, 219, 0.8)',
+                    'rgba(155, 89, 182, 0.8)',
+                    'rgba(243, 156, 18, 0.8)',
+                    'rgba(231, 76, 60, 0.8)',
+                    'rgba(26, 188, 156, 0.8)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Répartition du Volume par Client'
+                },
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+function updateNetworkTable(data) {
+    const tbody = document.getElementById('network-stats-table');
+    
+    if (data.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                    Aucune donnée de trafic réseau disponible
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = data.map(stat => {
+        const date = new Date(stat.created_at || stat.started_at);
+        const speed = stat.transfer_speed_mbps ? `${stat.transfer_speed_mbps} Mbps` : '-';
+        const duration = stat.duration_seconds ? `${Math.round(stat.duration_seconds / 60)}min` : '-';
+        const volume = stat.bytes_transferred ? `${(stat.bytes_transferred / (1024*1024*1024)).toFixed(2)} GB` : '-';
+        const files = stat.files_count || '-';
+        
+        return `
+            <tr>
+                <td>${date.toLocaleString('fr-FR')}</td>
+                <td>
+                    <span class="badge badge-${stat.client_name.includes('Linux') ? 'info' : 'primary'}">
+                        ${stat.client_name.includes('Linux') ? '🐧' : '🪟'} ${stat.client_name}
+                    </span>
+                </td>
+                <td><span class="badge badge-secondary">${stat.backup_type || 'full'}</span></td>
+                <td style="color: var(--success-color); font-weight: 600;">${speed}</td>
+                <td>${duration}</td>
+                <td style="color: var(--primary-color); font-weight: 600;">${volume}</td>
+                <td>${files}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Ajouter le gestionnaire pour le sélecteur de client
+document.addEventListener('DOMContentLoaded', () => {
+    // Ajouter l'event listener existant plus le nouveau
+    const networkClientSelect = document.getElementById('network-client-select');
+    if (networkClientSelect) {
+        networkClientSelect.addEventListener('change', refreshNetworkData);
+    }
+});
+
+// Ajouter le CSS pour les graphiques
+const networkStyle = document.createElement('style');
+networkStyle.textContent = `
+    .network-controls {
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background-color: var(--card-bg);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+    
+    .network-charts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    
+    .chart-container {
+        background-color: var(--card-bg);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+    }
+    
+    .chart-container:last-child {
+        grid-column: 1 / -1;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    .chart-container h3 {
+        margin-bottom: 1rem;
+        color: var(--text-primary);
+        font-size: 1.1rem;
+    }
+    
+    .network-table {
+        background-color: var(--card-bg);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+    }
+    
+    @media (max-width: 768px) {
+        .network-charts {
+            grid-template-columns: 1fr;
+        }
+    }
+`;
+document.head.appendChild(networkStyle);
