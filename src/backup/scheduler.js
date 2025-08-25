@@ -1,10 +1,11 @@
 const cron = require('node-cron');
 const schedule = require('node-schedule');
 const { logger } = require('../utils/logger');
-const { getClients, updateBackupStatus } = require('../utils/database');
+const { getClients, getClient, updateBackupStatus, addBackup, getCustomSchedules, addCustomSchedule, updateCustomSchedule, deleteCustomSchedule, incrementScheduleRunCount } = require('../utils/database');
 const WindowsBackupClient = require('./windowsBackup');
 const LinuxBackupClient = require('./linuxBackup');
 const { sendNotification } = require('../utils/notification');
+const { retryBackupOperation } = require('../utils/retry-helper');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -70,14 +71,23 @@ class BackupScheduler {
     async loadCustomSchedules() {
         // Charger les planifications personnalisées depuis la base de données
         try {
-            // TODO: Implémenter la récupération depuis la DB
-            // const customSchedules = await getCustomSchedules();
-            // for (const schedule of customSchedules) {
-            //     this.scheduleBackup(schedule);
-            // }
-            logger.info('Planifications personnalisées chargées');
+            const customSchedules = await getCustomSchedules(true); // Charger seulement les actives
+            
+            for (const schedule of customSchedules) {
+                const scheduleConfig = {
+                    name: `custom_${schedule.name}`,
+                    cron: schedule.cron_pattern,
+                    type: schedule.backup_type,
+                    description: schedule.description,
+                    clients: schedule.client_names ? schedule.client_names.split(',') : null
+                };
+                
+                this.scheduleBackup(scheduleConfig);
+            }
+            
+            logger.info(`${customSchedules.length} planifications personnalisées chargées depuis la base de données`);
         } catch (error) {
-            logger.warn('Aucune planification personnalisée trouvée');
+            logger.warn('Erreur lors du chargement des planifications personnalisées:', error);
         }
     }
 
@@ -106,7 +116,15 @@ class BackupScheduler {
 
         const job = cron.schedule(cronPattern, async () => {
             logger.info(`Exécution de la planification: ${description}`);
-            await this.runScheduledBackup(type, name);
+            await this.runScheduledBackup(type, name, scheduleConfig);
+            
+            // Incrémenter le compteur si c'est une planification personnalisée
+            if (name.startsWith('custom_')) {
+                const dbName = name.replace('custom_', '');
+                await incrementScheduleRunCount(dbName).catch(err => 
+                    logger.warn(`Impossible de mettre à jour le compteur pour ${dbName}:`, err)
+                );
+            }
         }, {
             scheduled: false,
             timezone: process.env.TZ || "Europe/Paris"
@@ -118,7 +136,7 @@ class BackupScheduler {
         logger.info(`Planification ajoutée: ${name} (${cronPattern}) - ${description}`);
     }
 
-    async runScheduledBackup(type, scheduleName) {
+    async runScheduledBackup(type, scheduleName, scheduleConfig = {}) {
         const backupId = `scheduled_${scheduleName}_${Date.now()}`;
         
         try {
@@ -206,19 +224,26 @@ class BackupScheduler {
                 folders: client.folders ? client.folders.split(',').map(f => f.trim()) : []
             };
 
-            let result;
-            if (type === 'incremental' || type === 'differential') {
-                // Trouver le dernier backup complet
-                const lastFullBackup = await this.findLastFullBackup(client.name);
-                if (lastFullBackup) {
-                    result = await backupClient.performIncrementalBackup(lastFullBackup, backupOptions);
+            // Exécuter le backup avec retry automatique
+            const result = await retryBackupOperation(async () => {
+                let backupResult;
+                if (type === 'incremental' || type === 'differential') {
+                    // Trouver le dernier backup complet
+                    const lastFullBackup = await this.findLastFullBackup(client.name);
+                    if (lastFullBackup) {
+                        backupResult = await backupClient.performIncrementalBackup(lastFullBackup, backupOptions);
+                    } else {
+                        logger.warn(`Aucun backup complet trouvé pour ${client.name}, backup complet forcé`);
+                        backupResult = await backupClient.performFullBackup(backupOptions);
+                    }
                 } else {
-                    logger.warn(`Aucun backup complet trouvé pour ${client.name}, backup complet forcé`);
-                    result = await backupClient.performFullBackup(backupOptions);
+                    backupResult = await backupClient.performFullBackup(backupOptions);
                 }
-            } else {
-                result = await backupClient.performFullBackup(backupOptions);
-            }
+                return backupResult;
+            }, client, {
+                maxRetries: 2, // Moins de retries pour les backups (opérations longues)
+                operation: `backup ${type} pour ${client.name}`
+            });
 
             // Marquer le backup comme réussi
             await updateBackupStatus(clientBackupId, 'completed', {
@@ -428,36 +453,57 @@ Serveur: ${process.env.HOSTNAME || 'EFC-Backup-Server'}
         }
     }
 
-    addCustomSchedule(name, cronPattern, type, description, clientNames = null) {
-        const scheduleConfig = {
-            name: `custom_${name}`,
-            cron: cronPattern,
-            type,
-            description,
-            clients: clientNames
-        };
-
-        // TODO: Sauvegarder en base de données
-        this.scheduleBackup(scheduleConfig);
-        
-        logger.info(`Planification personnalisée ajoutée: ${name}`);
-        return true;
+    async addCustomSchedule(name, cronPattern, type, description, clientNames = null, userId = null) {
+        try {
+            // Sauvegarder en base de données
+            await addCustomSchedule({
+                name: name,
+                cron_pattern: cronPattern,
+                backup_type: type,
+                description: description,
+                client_names: clientNames ? clientNames.join(',') : null,
+                created_by: userId
+            });
+            
+            // Ajouter à la planification en mémoire
+            const scheduleConfig = {
+                name: `custom_${name}`,
+                cron: cronPattern,
+                type,
+                description,
+                clients: clientNames
+            };
+            
+            this.scheduleBackup(scheduleConfig);
+            
+            logger.info(`Planification personnalisée ajoutée et sauvegardée: ${name}`);
+            return true;
+        } catch (error) {
+            logger.error(`Erreur lors de l'ajout de la planification ${name}:`, error);
+            throw error;
+        }
     }
 
-    removeSchedule(name) {
+    async removeSchedule(name) {
         const scheduleName = name.startsWith('custom_') ? name : `custom_${name}`;
+        const dbName = scheduleName.replace('custom_', '');
         
-        if (this.scheduledJobs.has(scheduleName)) {
-            this.scheduledJobs.get(scheduleName).destroy();
-            this.scheduledJobs.delete(scheduleName);
+        try {
+            // Supprimer de la base de données
+            await deleteCustomSchedule(dbName);
             
-            // TODO: Supprimer de la base de données
+            // Supprimer de la planification en mémoire
+            if (this.scheduledJobs.has(scheduleName)) {
+                this.scheduledJobs.get(scheduleName).destroy();
+                this.scheduledJobs.delete(scheduleName);
+            }
             
-            logger.info(`Planification supprimée: ${scheduleName}`);
+            logger.info(`Planification supprimée de la base et de la mémoire: ${scheduleName}`);
             return true;
+        } catch (error) {
+            logger.error(`Erreur lors de la suppression de la planification ${name}:`, error);
+            return false;
         }
-        
-        return false;
     }
 
     getScheduleStatus() {
@@ -503,6 +549,197 @@ Serveur: ${process.env.HOSTNAME || 'EFC-Backup-Server'}
                 job.stop();
                 logger.info(`Planification arrêtée: ${name}`);
             }
+        }
+    }
+
+    // Récupérer les backups en cours
+    getRunningBackups() {
+        const runningList = [];
+        for (const [backupId, backup] of this.runningBackups) {
+            runningList.push({
+                backupId: backupId,
+                clientName: backup.clientName,
+                clientId: backup.clientId,
+                type: backup.type,
+                startTime: backup.startTime,
+                progress: backup.progress || 0,
+                status: backup.status || 'running',
+                currentStep: backup.currentStep || 'Initialisation',
+                estimatedTimeRemaining: backup.estimatedTimeRemaining || null
+            });
+        }
+        return runningList;
+    }
+
+    // Démarrer un backup manuel pour un client spécifique
+    async startManualBackupForClient(clientId, options = {}) {
+        const backupId = `manual_${clientId}_${Date.now()}`;
+        
+        try {
+            // Récupérer le client spécifique
+            const client = await getClient(clientId);
+            if (!client) {
+                throw new Error(`Client avec ID ${clientId} non trouvé`);
+            }
+
+            if (!client.active) {
+                throw new Error(`Client ${client.name} est inactif`);
+            }
+
+            logger.info(`Démarrage du backup manuel pour client ${client.name} (ID: ${clientId})`);
+            
+            // Enregistrer le backup comme en cours
+            this.runningBackups.set(backupId, {
+                clientName: client.name,
+                clientId: clientId,
+                type: options.type || 'full',
+                startTime: new Date(),
+                status: 'starting',
+                progress: 0,
+                currentStep: 'Initialisation du backup',
+                triggeredBy: options.triggered_by || 'manual'
+            });
+
+            // Démarrer le backup de façon asynchrone
+            this.performClientBackupWithProgress(client, options.type || 'full', backupId)
+                .then(() => {
+                    // Laisser le backup visible dans l'interface pendant 10 secondes
+                    setTimeout(() => {
+                        this.runningBackups.delete(backupId);
+                        logger.info(`Backup manuel terminé pour ${client.name}`);
+                    }, 10000); // 10 secondes pour voir le 100%
+                })
+                .catch((error) => {
+                    this.runningBackups.set(backupId, {
+                        ...this.runningBackups.get(backupId),
+                        status: 'failed',
+                        error: error.message,
+                        progress: 0
+                    });
+                    logger.error(`Erreur backup manuel pour ${client.name}:`, error);
+                    
+                    // Supprimer après 5 minutes pour éviter l'accumulation
+                    setTimeout(() => {
+                        this.runningBackups.delete(backupId);
+                    }, 5 * 60 * 1000);
+                });
+
+            return backupId;
+
+        } catch (error) {
+            logger.error('Erreur lors du démarrage du backup manuel:', error);
+            this.runningBackups.delete(backupId);
+            throw error;
+        }
+    }
+
+    // Version améliorée de performClientBackup avec suivi de progression
+    async performClientBackupWithProgress(client, type, backupId) {
+        const backupData = this.runningBackups.get(backupId);
+        if (!backupData) return;
+
+        try {
+            // Mettre à jour le statut
+            this.runningBackups.set(backupId, {
+                ...backupData,
+                status: 'running',
+                currentStep: 'Connexion au client',
+                progress: 10
+            });
+
+            // Choisir le bon client selon l'OS
+            const BackupClient = client.os_type === 'windows' ? WindowsBackupClient : LinuxBackupClient;
+            const backupClient = new BackupClient(client);
+            
+            // Mettre à jour la progression
+            this.runningBackups.set(backupId, {
+                ...this.runningBackups.get(backupId),
+                currentStep: 'Préparation du backup',
+                progress: 25
+            });
+
+            // Utiliser retry helper pour la robustesse
+            const result = await retryBackupOperation(async () => {
+                // Créer un callback de progression
+                const progressCallback = (step, progress, details = {}) => {
+                    this.runningBackups.set(backupId, {
+                        ...this.runningBackups.get(backupId),
+                        currentStep: step,
+                        progress: progress, // Laisser la progression naturelle
+                        details: details
+                    });
+                };
+                
+                // Mettre à jour la progression initiale
+                progressCallback('Sauvegarde en cours', 30);
+                
+                // Utiliser les bonnes méthodes selon le type de backup avec callback
+                if (type === 'incremental') {
+                    const lastFullBackup = await this.findLastFullBackup(client.name);
+                    if (lastFullBackup) {
+                        return await backupClient.performIncrementalBackup(lastFullBackup, { progressCallback });
+                    } else {
+                        logger.warn(`Aucun backup complet trouvé pour ${client.name}, backup complet forcé`);
+                        return await backupClient.performFullBackup({ progressCallback });
+                    }
+                } else {
+                    return await backupClient.performFullBackup({ progressCallback });
+                }
+            }, 3);
+
+            // Finaliser
+            this.runningBackups.set(backupId, {
+                ...this.runningBackups.get(backupId),
+                currentStep: 'Finalisation',
+                progress: 98, // Éviter de régresser si déjà à 100%
+                status: 'completing'
+            });
+
+            // Enregistrer en base avec les détails du résultat
+            await addBackup({
+                backup_id: backupId,
+                client_name: client.name,
+                type: type,
+                status: 'completed',
+                started_at: backupData.startTime.toISOString(),
+                completed_at: new Date().toISOString(),
+                size_mb: result.metadata?.size_mb || 0,
+                file_count: result.metadata?.file_count || 0,
+                path: result.path || null,
+                metadata: JSON.stringify({
+                    manual: true,
+                    triggered_by: backupData.triggeredBy,
+                    ...result
+                })
+            });
+
+            // Succès
+            this.runningBackups.set(backupId, {
+                ...this.runningBackups.get(backupId),
+                currentStep: 'Terminé',
+                progress: 100,
+                status: 'completed'
+            });
+
+            logger.info(`Backup manuel réussi pour ${client.name}`, result);
+            
+        } catch (error) {
+            await addBackup({
+                backup_id: backupId,
+                client_name: client.name,
+                type: type,
+                status: 'failed',
+                started_at: backupData.startTime.toISOString(),
+                failed_at: new Date().toISOString(),
+                error_message: error.message,
+                metadata: JSON.stringify({
+                    manual: true,
+                    triggered_by: backupData.triggeredBy,
+                    error: error.message
+                })
+            });
+            
+            throw error;
         }
     }
 

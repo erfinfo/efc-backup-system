@@ -278,8 +278,9 @@ router.post('/schedules', AuthMiddleware.requireAdmin, async (req, res) => {
             description
         });
 
-        // Ajouter au scheduler
-        backupScheduler.addCustomSchedule(name, cron_pattern, backup_type, description, client_names);
+        // Ajouter au scheduler (avec l'ID utilisateur si disponible)
+        const userId = req.user ? req.user.id : null;
+        await backupScheduler.addCustomSchedule(name, cron_pattern, backup_type, description, client_names, userId);
 
         logger.info(`Planification ajoutée: ${name}`);
         res.status(201).json({ message: 'Planification ajoutée avec succès', id: result.id });
@@ -291,7 +292,7 @@ router.post('/schedules', AuthMiddleware.requireAdmin, async (req, res) => {
 
 router.delete('/schedules/:name', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
-        const success = backupScheduler.removeSchedule(req.params.name);
+        const success = await backupScheduler.removeSchedule(req.params.name);
         
         if (success) {
             logger.info(`Planification supprimée: ${req.params.name}`);
@@ -534,7 +535,7 @@ router.get('/network/stats/:clientName', AuthMiddleware.requireClientAccess, asy
 router.get('/info', (req, res) => {
     res.json({
         name: 'EFC Backup System API',
-        version: '1.3.0',
+        version: '1.4.1',
         author: 'EFC Informatique',
         website: 'https://efcinfo.com',
         node: process.version,
@@ -542,6 +543,449 @@ router.get('/info', (req, res) => {
         environment: process.env.NODE_ENV || 'development',
         timestamp: new Date().toISOString()
     });
+});
+
+// Routes de maintenance
+router.post('/system/cleanup', AuthMiddleware.requireAdmin, async (req, res) => {
+    try {
+        logger.info('Lancement du nettoyage système via API');
+        
+        // Exécuter le script de nettoyage
+        const { spawn } = require('child_process');
+        const cleanupProcess = spawn('node', ['scripts/cleanup.js'], {
+            cwd: process.cwd()
+        });
+        
+        let output = '';
+        let errorOutput = '';
+        
+        cleanupProcess.stdout.on('data', (data) => {
+            output += data.toString();
+        });
+        
+        cleanupProcess.stderr.on('data', (data) => {
+            errorOutput += data.toString();
+        });
+        
+        cleanupProcess.on('close', (code) => {
+            if (code === 0) {
+                // Parse la sortie pour extraire les statistiques
+                const stats = {
+                    backupsDeleted: 0,
+                    logsDeleted: 0,
+                    spaceFreed: '0 MB'
+                };
+                
+                // Extraction basique des statistiques depuis la sortie
+                const backupsMatch = output.match(/(\d+) backups supprimés/);
+                const logsMatch = output.match(/(\d+) fichiers de log supprimés/);
+                const spaceMatch = output.match(/Espace libéré: ([0-9.]+ [A-Z]{1,2})/);
+                
+                if (backupsMatch) stats.backupsDeleted = parseInt(backupsMatch[1]);
+                if (logsMatch) stats.logsDeleted = parseInt(logsMatch[1]);
+                if (spaceMatch) stats.spaceFreed = spaceMatch[1];
+                
+                res.json({
+                    success: true,
+                    message: 'Nettoyage terminé avec succès',
+                    ...stats,
+                    output: output
+                });
+            } else {
+                res.status(500).json({
+                    success: false,
+                    error: 'Erreur lors du nettoyage',
+                    output: errorOutput || output
+                });
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur API cleanup:', error);
+        res.status(500).json({ error: 'Erreur lors du lancement du nettoyage' });
+    }
+});
+
+router.post('/test-connections', AuthMiddleware.requireAdmin, async (req, res) => {
+    try {
+        logger.info('Test de connexions via API');
+        
+        const clients = await getClients({ active: true });
+        const results = [];
+        
+        for (const client of clients) {
+            const startTime = Date.now();
+            
+            try {
+                // Utiliser le système de test de connexion existant
+                const response = await fetch(`${req.protocol}://${req.get('host')}/api/test-client`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host: client.host,
+                        port: client.port || 22,
+                        username: client.username,
+                        password: client.password
+                    })
+                });
+                
+                const testResult = await response.json();
+                const duration = Date.now() - startTime;
+                
+                results.push({
+                    client: client.name,
+                    host: client.host,
+                    success: testResult.success,
+                    duration: duration,
+                    error: testResult.success ? null : (testResult.error || 'Connexion échouée')
+                });
+                
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                results.push({
+                    client: client.name,
+                    host: client.host,
+                    success: false,
+                    duration: duration,
+                    error: error.message
+                });
+            }
+        }
+        
+        res.json({
+            success: true,
+            results: results,
+            summary: {
+                total: results.length,
+                successful: results.filter(r => r.success).length,
+                failed: results.filter(r => !r.success).length
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur API test-connections:', error);
+        res.status(500).json({ error: 'Erreur lors du test des connexions' });
+    }
+});
+
+router.post('/system/test-error-handling', AuthMiddleware.requireAdmin, async (req, res) => {
+    try {
+        logger.info('Lancement des tests de gestion d\'erreur via API');
+        
+        // Exécuter le script de test
+        const { spawn } = require('child_process');
+        const testProcess = spawn('node', ['scripts/test-error-handling.js'], {
+            cwd: process.cwd()
+        });
+        
+        let output = '';
+        let errorOutput = '';
+        
+        testProcess.stdout.on('data', (data) => {
+            output += data.toString();
+        });
+        
+        testProcess.stderr.on('data', (data) => {
+            errorOutput += data.toString();
+        });
+        
+        testProcess.on('close', (code) => {
+            // Parse la sortie pour extraire les résultats
+            const results = [];
+            
+            // Extraction basique des résultats de test depuis la sortie
+            const testLines = output.split('\n').filter(line => line.includes('✅') || line.includes('❌'));
+            
+            for (const line of testLines) {
+                const success = line.includes('✅');
+                const testName = line.replace(/[✅❌]/g, '').split(':')[0].trim();
+                const message = line.split(':')[1]?.trim() || '';
+                
+                results.push({
+                    name: testName,
+                    success: success,
+                    message: message
+                });
+            }
+            
+            res.json({
+                success: code === 0,
+                results: results,
+                output: output,
+                errorOutput: errorOutput
+            });
+        });
+        
+    } catch (error) {
+        logger.error('Erreur API test-error-handling:', error);
+        res.status(500).json({ error: 'Erreur lors du lancement des tests' });
+    }
+});
+
+router.get('/system/cleanup-estimate', AuthMiddleware.requireAdmin, async (req, res) => {
+    try {
+        // Estimer l'espace libérable sans effectuer le nettoyage
+        const retentionDays = parseInt(process.env.RETENTION_DAYS || '30');
+        const logRetentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '90');
+        
+        let estimatedSpace = 0;
+        
+        // Estimer les backups anciens (implémentation basique)
+        const backupPath = process.env.BACKUP_PATH || '/backups';
+        try {
+            const backups = await getBackups();
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+            
+            const oldBackups = backups.filter(b => new Date(b.created_at) < cutoffDate);
+            
+            // Estimation approximative : 100MB par backup ancien
+            estimatedSpace += oldBackups.length * 100;
+            
+        } catch (error) {
+            logger.warn('Erreur estimation backups:', error);
+        }
+        
+        // Estimation finale
+        const formattedSpace = estimatedSpace > 1024 ? 
+            `${(estimatedSpace / 1024).toFixed(1)} GB` : 
+            `${estimatedSpace} MB`;
+            
+        res.json({
+            estimatedSpace: formattedSpace,
+            details: {
+                retentionDays,
+                logRetentionDays,
+                estimatedSpaceMB: estimatedSpace
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur API cleanup-estimate:', error);
+        res.status(500).json({ error: 'Erreur lors de l\'estimation' });
+    }
+});
+
+// Route pour récupérer les permissions de l'utilisateur connecté
+router.get('/user/permissions', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { permissionManager } = require('../utils/permissions');
+        
+        // Récupérer les permissions de l'utilisateur
+        const permissions = await permissionManager.getUserPermissions(req.user.id);
+        const clientPermissions = await permissionManager.getClientPermissions(req.user.id);
+        
+        res.json({
+            success: true,
+            data: {
+                role: req.user.role,
+                permissions: permissions,
+                clientAccess: clientPermissions,
+                userId: req.user.id,
+                username: req.user.username
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur récupération permissions:', error);
+        res.status(500).json({ error: 'Erreur lors de la récupération des permissions' });
+    }
+});
+
+// Route pour récupérer l'état des backups en cours
+router.get('/backups/status', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const backupScheduler = require('../backup/scheduler');
+        const { permissionManager } = require('../utils/permissions');
+        
+        // Vérifier les permissions
+        const hasPermission = await permissionManager.hasPermission(req.user.id, 'backups_view');
+        if (!hasPermission) {
+            return res.status(403).json({ error: 'Permission insuffisante' });
+        }
+        
+        // Récupérer les informations sur les backups en cours
+        const runningBackups = backupScheduler.getRunningBackups();
+        const clientPermissions = await permissionManager.getClientPermissions(req.user.id);
+        
+        // Filtrer selon les permissions utilisateur
+        let filteredBackups = runningBackups;
+        if (req.user.role !== 'admin' && !clientPermissions.canViewAll) {
+            filteredBackups = runningBackups.filter(backup => 
+                clientPermissions.allowedClients.includes(backup.clientName)
+            );
+        }
+        
+        // Désactiver le cache pour les données en temps réel
+        res.set({
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                runningBackups: filteredBackups,
+                totalRunning: filteredBackups.length
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur récupération état backups:', error);
+        res.status(500).json({ error: 'Erreur lors de la récupération de l\'état des backups' });
+    }
+});
+
+// Route pour démarrer un backup manuel
+router.post('/backups/start/:clientId', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { permissionManager } = require('../utils/permissions');
+        const clientId = parseInt(req.params.clientId);
+        
+        // Vérifier les permissions de création de backup
+        const hasPermission = await permissionManager.hasPermission(req.user.id, 'backups_create');
+        if (!hasPermission) {
+            return res.status(403).json({ error: 'Permission insuffisante pour créer un backup' });
+        }
+        
+        // Récupérer le client
+        const client = await getClient(clientId);
+        if (!client) {
+            return res.status(404).json({ error: 'Client non trouvé' });
+        }
+        
+        // Vérifier les permissions client
+        const clientPermissions = await permissionManager.getClientPermissions(req.user.id);
+        if (req.user.role !== 'admin' && !clientPermissions.canViewAll) {
+            if (!clientPermissions.allowedClients.includes(client.name)) {
+                return res.status(403).json({ error: 'Accès non autorisé à ce client' });
+            }
+        }
+        
+        // Démarrer le backup manuel
+        const backupScheduler = require('../backup/scheduler');
+        const backupId = await backupScheduler.startManualBackupForClient(clientId, {
+            type: req.body.type || 'full',
+            triggered_by: req.user.username
+        });
+        
+        logger.info(`Backup manuel démarré par ${req.user.username}`, {
+            clientId,
+            clientName: client.name,
+            backupId,
+            userId: req.user.id
+        });
+        
+        res.json({
+            success: true,
+            data: {
+                backupId,
+                clientName: client.name,
+                status: 'started',
+                message: 'Backup manuel démarré avec succès'
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur démarrage backup manuel:', error);
+        res.status(500).json({ error: 'Erreur lors du démarrage du backup manuel' });
+    }
+});
+
+// Route pour télécharger un backup
+router.get('/backups/download/:backupId', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { permissionManager } = require('../utils/permissions');
+        const backupId = req.params.backupId;
+        
+        // Vérifier les permissions de téléchargement de backup
+        logger.info(`Vérification permission backups_view pour utilisateur ${req.user.id} (${req.user.username})`);
+        const hasPermission = await permissionManager.hasPermission(req.user.id, 'backups_view');
+        logger.info(`Permission backups_view: ${hasPermission}`);
+        if (!hasPermission) {
+            logger.warn(`Accès refusé - permission backups_view manquante pour ${req.user.username}`);
+            return res.status(403).json({ error: 'Permission insuffisante pour télécharger un backup' });
+        }
+        
+        // Récupérer les informations du backup
+        const backup = await db.get('SELECT * FROM backups WHERE backup_id = ?', [backupId]);
+        if (!backup) {
+            logger.warn(`Backup non trouvé: ${backupId}`);
+            return res.status(404).json({ error: 'Backup non trouvé' });
+        }
+        
+        logger.info(`Backup trouvé: ${backup.client_name}, status: ${backup.status}`);
+        
+        // Vérifier les permissions client
+        const clientPermissions = await permissionManager.getClientPermissions(req.user.id);
+        logger.info(`Permissions client pour ${req.user.username}:`, clientPermissions);
+        
+        if (req.user.role !== 'admin' && !clientPermissions.canViewAll) {
+            logger.info(`Vérification accès client: backup.client_name=${backup.client_name}, allowedClients=${JSON.stringify(clientPermissions.allowedClients)}`);
+            if (!clientPermissions.allowedClients.includes(backup.client_name)) {
+                logger.warn(`Accès refusé - client ${backup.client_name} non autorisé pour ${req.user.username}`);
+                return res.status(403).json({ error: 'Accès non autorisé à ce backup' });
+            }
+        }
+        
+        // Vérifier que le backup est terminé avec succès
+        if (backup.status !== 'completed') {
+            return res.status(400).json({ error: 'Le backup n\'est pas disponible pour téléchargement' });
+        }
+        
+        // Vérifier que le fichier existe
+        const fs = require('fs');
+        const path = require('path');
+        
+        let filePath = backup.path;
+        if (!filePath) {
+            return res.status(404).json({ error: 'Chemin du fichier backup non trouvé' });
+        }
+        
+        // Si le chemin n'est pas absolu, l'ajouter au dossier de backup par défaut
+        if (!path.isAbsolute(filePath)) {
+            const backupDir = process.env.BACKUP_PATH || '/tmp';
+            filePath = path.join(backupDir, filePath);
+        }
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Fichier backup non trouvé sur le disque' });
+        }
+        
+        // Obtenir les informations du fichier
+        const stats = fs.statSync(filePath);
+        const fileName = path.basename(filePath);
+        
+        logger.info(`Téléchargement backup ${backupId} par ${req.user.username}`, {
+            backupId,
+            clientName: backup.client_name,
+            fileName,
+            filePath,
+            fileSize: stats.size,
+            userId: req.user.id
+        });
+        
+        // Définir les headers pour le téléchargement
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Length', stats.size);
+        
+        // Créer un stream de lecture et l'envoyer
+        const readStream = fs.createReadStream(filePath);
+        readStream.pipe(res);
+        
+        readStream.on('error', (error) => {
+            logger.error('Erreur lecture fichier backup:', error);
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Erreur lors de la lecture du fichier' });
+            }
+        });
+        
+    } catch (error) {
+        logger.error('Erreur téléchargement backup:', error);
+        res.status(500).json({ error: 'Erreur lors du téléchargement du backup' });
+    }
 });
 
 // Middleware de gestion d'erreurs
