@@ -100,6 +100,18 @@ npm run lint
    - Statistiques et métriques
    - Interface programmatique
 
+6. **Gestion des Utilisateurs et Sécurité**
+   - Système d'authentification JWT sécurisé
+   - Gestion complète des utilisateurs (CRUD)
+   - Système de permissions granulaires
+   - Contrôle d'accès basé sur les rôles (Admin/Client)
+   - Interface de changement de mot de passe
+   - Chiffrement bcrypt des mots de passe (12 rounds)
+   - Restrictions d'accès aux données (clients voient uniquement leurs backups)
+   - Association utilisateurs-clients pour contrôle d'accès
+   - Validation avancée des mots de passe
+   - Session management avec cookies sécurisés
+
 ### Points d'Entrée Importants
 
 - `src/index.js` - Point d'entrée principal du serveur avec initialisation complète
@@ -110,6 +122,12 @@ npm run lint
 - `src/utils/database.js` - Base de données SQLite avec ORM simplifiée  
 - `src/monitor/systemMonitor.js` - Monitoring système temps réel
 - `src/api/routes.js` - API REST complète
+- `src/api/users.js` - API gestion des utilisateurs et authentification
+- `src/api/auth.js` - Routes d'authentification (login/logout)
+- `src/middleware/auth.js` - Middleware d'authentification et permissions
+- `src/utils/permissions.js` - Système de permissions et contrôle d'accès
+- `src/utils/password-validator.js` - Validation et hachage des mots de passe
+- `src/utils/ssl-manager-apache.js` - Gestionnaire SSL pour Apache2
 - `src/utils/notification.js` - Service de notifications email
 - `web/index.html` - Interface web principale avec branding EFC
 - `web/app.js` - Logique frontend interactive
@@ -138,6 +156,12 @@ Le système utilise des variables d'environnement (fichier `.env`):
 - `DAILY_BACKUP_TIME` - Heure backup quotidien (ex: 02:00)
 - `WEEKLY_BACKUP_DAY` - Jour backup hebdo (0=Dimanche)
 - `MONTHLY_BACKUP_DAY` - Jour du mois backup mensuel
+
+**Authentification & Sécurité:**
+- `JWT_SECRET` - Clé secrète pour tokens JWT
+- `SESSION_SECRET` - Clé secrète pour sessions Express
+- `PASSWORD_SALT_ROUNDS` - Nombre de rounds bcrypt (défaut: 12)
+- `DEFAULT_ADMIN_PASSWORD` - Mot de passe admin initial
 
 **Notifications & Monitoring:**
 - `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` - Configuration email

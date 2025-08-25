@@ -8,6 +8,7 @@
 - Page inaccessible sur http://localhost:3000
 - Erreur "This site can't be reached"
 - Timeout de connexion
+- Erreur d'authentification à la connexion
 
 #### Solutions
 
@@ -43,6 +44,26 @@ sudo firewall-cmd --reload
 
 # Windows
 netsh advfirewall firewall add rule name="EFC Backup" dir=in action=allow protocol=TCP localport=3000
+```
+
+**D. Problème d'authentification utilisateur**
+```bash
+# Vérifier que l'utilisateur admin existe
+node -e "
+const { db } = require('./src/utils/database');
+db.get('SELECT * FROM users WHERE username = ?', ['admin'])
+  .then(user => console.log('Admin trouvé:', user))
+  .catch(err => console.error('Erreur:', err));
+"
+
+# Réinitialiser le mot de passe admin si nécessaire
+node -e "
+const { db } = require('./src/utils/database');
+const bcrypt = require('bcrypt');
+const password = await bcrypt.hash('admin123', 12);
+await db.run('UPDATE users SET password_hash = ? WHERE username = ?', [password, 'admin']);
+console.log('Mot de passe admin réinitialisé à: admin123');
+"
 ```
 
 ### 2. Erreur de connexion SSH aux clients Windows
@@ -297,6 +318,91 @@ ls -la web/app.js
 ```bash
 chmod -R 644 web/
 chmod 755 web/
+```
+
+### 9. Problèmes de gestion des utilisateurs (v1.4.0+)
+
+#### Symptômes
+- "Erreur lors du chargement des utilisateurs"
+- Modal de changement de mot de passe qui ne s'ouvre pas
+- Permissions utilisateur non respectées
+
+#### Solutions
+
+**A. Problème de base de données utilisateurs**
+```bash
+# Vérifier la structure des tables
+sqlite3 data/efc-backup.db ".schema users"
+
+# Vérifier si la colonne permissions existe
+sqlite3 data/efc-backup.db "PRAGMA table_info(users);"
+
+# Ajouter la colonne manquante si nécessaire
+sqlite3 data/efc-backup.db "ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]';"
+```
+
+**B. Problème de permissions**
+```bash
+# Réinitialiser les permissions admin
+node -e "
+const { db } = require('./src/utils/database');
+const permissions = JSON.stringify(['*']); // Toutes permissions
+await db.run('UPDATE users SET permissions = ? WHERE role = ?', [permissions, 'admin']);
+console.log('Permissions admin réinitialisées');
+"
+```
+
+**C. Modal qui ne fonctionne pas**
+```bash
+# Vérifier les logs browser (F12 > Console)
+# Problèmes JS courants :
+# - IDs dupliqués dans le HTML
+# - Scripts JS non chargés
+# - Erreurs de validation côté frontend
+```
+
+**D. Utilisateur bloqué**
+```bash
+# Débloquer un utilisateur spécifique
+sqlite3 data/efc-backup.db "UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE username = 'USER';"
+```
+
+### 10. Problèmes SSL/HTTPS (Apache2)
+
+#### Symptômes
+- Certificat SSL expiré
+- "Your connection is not private"
+- Redirection HTTP->HTTPS qui échoue
+
+#### Solutions
+
+**A. Vérifier le statut SSL**
+```bash
+# Via l'API
+curl -X GET http://localhost:3000/api/ssl/status
+
+# Vérifier les certificats manuellement
+openssl x509 -in /etc/letsencrypt/live/backup.efcinfo.com/fullchain.pem -noout -dates
+```
+
+**B. Renouveler le certificat**
+```bash
+# Via l'API
+curl -X POST http://localhost:3000/api/ssl/renew
+
+# Manuellement avec certbot
+sudo certbot renew --apache
+sudo systemctl reload apache2
+```
+
+**C. Problème de configuration Apache**
+```bash
+# Tester la configuration
+sudo apache2ctl configtest
+
+# Voir les logs Apache
+sudo tail -f /var/log/apache2/error.log
+sudo tail -f /var/log/apache2/efc-backup-ssl-error.log
 ```
 
 ## 🔍 Diagnostic Avancé

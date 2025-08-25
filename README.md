@@ -257,8 +257,22 @@ sudo systemctl status efc-backup
 ### Accès Initial
 
 1. Ouvrir un navigateur web
-2. Accéder à `http://IP_DU_SERVEUR:3000`
-3. Se connecter avec le mot de passe défini dans `.env`
+2. Accéder à `http://IP_DU_SERVEUR:3000` (ou `https://` si SSL configuré)
+3. **Première connexion** : Se connecter avec les identifiants par défaut
+   - **Utilisateur** : `admin`
+   - **Mot de passe** : `admin123` (à changer immédiatement)
+4. **Changement obligatoire** : Modifier le mot de passe administrateur via l'interface
+
+### Système d'Authentification
+
+**EFC Backup v1.4.0** intègre un système complet de gestion des utilisateurs :
+
+- **Authentification JWT** sécurisée avec sessions
+- **Rôles utilisateurs** : Administrateur et Client
+- **Permissions granulaires** pour contrôler l'accès aux fonctionnalités
+- **Gestion des utilisateurs** : Interface CRUD complète pour les administrateurs
+- **Sécurité renforcée** : Chiffrement bcrypt, validation des mots de passe
+- **Accès contrôlé** : Les clients ne voient que leurs propres backups
 
 ### Dashboard Principal
 
@@ -267,6 +281,24 @@ Le dashboard affiche :
 - **Backups Aujourd'hui** : Backups effectués dans les 24h
 - **Espace Utilisé** : Espace disque total des backups
 - **Dernière Exécution** : Heure du dernier backup
+
+### Gestion des Utilisateurs (Administrateurs)
+
+L'interface d'administration permet de :
+
+1. **Créer des utilisateurs** avec rôles Admin ou Client
+2. **Modifier les informations** utilisateur (nom, email, rôle)
+3. **Gérer les permissions** granulaires par utilisateur
+4. **Associer utilisateurs-clients** pour contrôler l'accès aux backups
+5. **Réinitialiser les mots de passe** utilisateur
+6. **Supprimer des utilisateurs** avec confirmation
+
+### Changement de Mot de Passe
+
+Tous les utilisateurs peuvent :
+- Accéder à **"Mon Profil"** dans le menu
+- Changer leur mot de passe avec validation sécurisée
+- Respecter les critères de complexité requis
 
 ### Ajouter un Client
 

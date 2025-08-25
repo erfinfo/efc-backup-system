@@ -1,6 +1,6 @@
 # 🎉 EFC Backup System - SYSTÈME COMPLET
 
-## ✅ TOUTES LES TÂCHES TERMINÉES (11/11)
+## ✅ TOUTES LES TÂCHES TERMINÉES (11/11) - v1.4.0
 
 Le système EFC Backup est maintenant **100% fonctionnel** et prêt pour la production !
 
@@ -120,6 +120,18 @@ efc-backup/
 - **Troubleshooting** : Solutions problèmes courants
 - **CLAUDE.md** : Guide pour développement futur
 
+### ✅ 11. Gestion des Utilisateurs et Sécurité (v1.4.0)
+- **Authentification JWT** : Sécurisée avec tokens et sessions
+- **Gestion utilisateurs** : Interface CRUD complète pour admins
+- **Rôles & permissions** : Système granulaire (Admin/Client)
+- **Contrôle d'accès** : Clients voient uniquement leurs backups
+- **Validation mots de passe** : Complexité avec bcrypt (12 rounds)
+- **Interface sécurisée** : Changement de mot de passe pour tous
+- **SSL Apache2** : Gestionnaire complet Let's Encrypt
+- **Session management** : Cookies sécurisés avec expiration
+- **Restrictions données** : Filtrage automatique par utilisateur
+- **Associations clients** : Contrôle granulaire des accès backup
+
 ---
 
 ## 🎯 DÉPLOIEMENT IMMÉDIAT
@@ -152,9 +164,11 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 ## 📋 RÉSULTAT FINAL
 
 ### 🌐 Interface Accessible
-- **URL** : `http://IP-SERVEUR:3000`
-- **Login** : Mot de passe généré automatiquement
+- **URL** : `http://IP-SERVEUR:3000` (ou `https://` avec SSL)
+- **Login** : `admin` / `admin123` (à changer à la première connexion)
 - **Features** : Toutes fonctionnalités opérationnelles
+- **Utilisateurs** : Gestion complète avec rôles et permissions
+- **Sécurité** : Authentification JWT avec sessions sécurisées
 
 ### 📊 Métriques & Monitoring
 - **Temps réel** : Dashboard avec stats live
@@ -185,9 +199,11 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 5. **📧 Notifications HTML** : Templates EFC personnalisés
 6. **🗄️ Base Embarquée** : SQLite, pas de serveur DB
 7. **🔄 Planification Avancée** : Patterns cron personnalisables
-8. **🛡️ Sécurité Intégrée** : Protection par défaut
-9. **📝 Documentation Complète** : 100+ pages guides
-10. **🆘 Support Dépannage** : Solutions problèmes courants
+8. **🔐 Sécurité Intégrée** : JWT, bcrypt, permissions granulaires
+9. **🌐 SSL Apache2** : Certificats Let's Encrypt automatiques
+10. **👥 Multi-utilisateurs** : Gestion complète rôles/permissions
+11. **📝 Documentation Complète** : 100+ pages guides
+12. **🆘 Support Dépannage** : Solutions problèmes courants
 
 ---
 
