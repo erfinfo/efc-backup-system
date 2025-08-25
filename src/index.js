@@ -4,6 +4,9 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const dotenv = require('dotenv');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const rateLimit = require('express-rate-limit');
 
 // Charger les variables d'environnement en premier
 dotenv.config();
@@ -13,22 +16,64 @@ const { logger } = require('./utils/logger');
 const backupScheduler = require('./backup/scheduler');
 const systemMonitor = require('./monitor/systemMonitor');
 const apiRoutes = require('./api/routes');
+const authRoutes = require('./api/auth');
+const backupVerifyRoutes = require('./api/backup-verify');
+const messagingRoutes = require('./api/messaging');
+const sslRoutes = require('./api/ssl');
 const { notificationService } = require('./utils/notification');
+const { messagingService } = require('./utils/messaging');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-// Middleware de sécurité et performance - Adapté pour HTTP
+// Middleware de sécurité et performance
 app.use(helmet({
     contentSecurityPolicy: false,  // Désactivé pour simplifier en HTTP
     crossOriginOpenerPolicy: false,  // Désactivé pour éviter l'erreur COOP
     originAgentCluster: false  // Désactivé pour éviter l'erreur cluster
 }));
+
+// Rate limiting global
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limite à 100 requêtes par fenêtre
+    message: 'Trop de requêtes depuis cette IP, réessayez dans 15 minutes.',
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+// Rate limiting pour l'authentification (plus strict)
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // limite à 5 tentatives de connexion par IP
+    message: 'Trop de tentatives de connexion, réessayez dans 15 minutes.',
+    skipSuccessfulRequests: true
+});
+
+app.use(globalLimiter);
 app.use(compression());
-app.use(cors());
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
+    credentials: true
+}));
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Session middleware
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'efc-backup-session-secret-change-in-production',
+    name: 'efc_session',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production', // HTTPS en production
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24 heures
+        sameSite: 'strict'
+    }
+}));
 
 // Middleware de logging des requêtes
 app.use((req, res, next) => {
@@ -46,8 +91,20 @@ app.use(express.static(path.join(__dirname, '../web'), {
     maxAge: process.env.NODE_ENV === 'production' ? '1d' : '0'
 }));
 
+// Routes authentification avec rate limiting
+app.use('/auth', authLimiter, authRoutes);
+
 // Routes API
 app.use('/api', apiRoutes);
+
+// Routes de vérification et restauration des backups
+app.use('/api/backup-verify', backupVerifyRoutes);
+
+// Routes de messaging (email/SMS)
+app.use('/api/messaging', messagingRoutes);
+
+// Routes SSL et certificats
+app.use('/api/ssl', sslRoutes);
 
 // Route principale avec fallback pour SPA
 app.get('*', (req, res) => {

@@ -118,6 +118,24 @@ class Database {
                 completed_at DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (backup_id) REFERENCES backups(backup_id)
+            )`,
+            
+            // Table des utilisateurs pour l'authentification
+            `CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'client',
+                client_name TEXT,
+                email TEXT,
+                phone TEXT,
+                last_login DATETIME,
+                failed_login_attempts INTEGER DEFAULT 0,
+                locked_until DATETIME,
+                active BOOLEAN DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (client_name) REFERENCES clients(name)
             )`
         ];
 
@@ -134,7 +152,10 @@ class Database {
             'CREATE INDEX IF NOT EXISTS idx_network_stats_client_name ON network_stats(client_name)',
             'CREATE INDEX IF NOT EXISTS idx_network_stats_created_at ON network_stats(created_at)',
             'CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON activity_logs(timestamp)',
-            'CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp)'
+            'CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp)',
+            'CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)',
+            'CREATE INDEX IF NOT EXISTS idx_users_client_name ON users(client_name)',
+            'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)'
         ];
 
         for (const index of indexes) {
@@ -575,6 +596,114 @@ async function getNetworkStatsByClient(clientName, limit = 10) {
     `, [clientName, limit]);
 }
 
+// Fonctions pour les utilisateurs
+const addUser = async (userData) => {
+    const { username, password_hash, role = 'client', client_name, email, phone } = userData;
+    
+    const result = await db.run(
+        `INSERT INTO users (username, password_hash, role, client_name, email, phone) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [username, password_hash, role, client_name, email, phone]
+    );
+    
+    await logActivity('USER_CREATED', client_name, null, null, { username, role });
+    return result;
+};
+
+const getUserByUsername = async (username) => {
+    return await db.get('SELECT * FROM users WHERE username = ? AND active = 1', [username]);
+};
+
+const getUserById = async (id) => {
+    return await db.get('SELECT * FROM users WHERE id = ? AND active = 1', [id]);
+};
+
+const updateUser = async (id, userData) => {
+    const fields = [];
+    const params = [];
+    
+    for (const [key, value] of Object.entries(userData)) {
+        if (['username', 'password_hash', 'role', 'client_name', 'email', 'phone', 'active'].includes(key)) {
+            fields.push(`${key} = ?`);
+            params.push(value);
+        }
+    }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(id);
+    
+    const result = await db.run(
+        `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+        params
+    );
+    
+    const user = await getUserById(id);
+    await logActivity('USER_UPDATED', user?.client_name, null, null, { userId: id, username: user?.username });
+    
+    return result;
+};
+
+const updateUserLoginInfo = async (id, loginData = {}) => {
+    const fields = [];
+    const params = [];
+    
+    if (loginData.success) {
+        fields.push('last_login = CURRENT_TIMESTAMP');
+        fields.push('failed_login_attempts = 0');
+        fields.push('locked_until = NULL');
+    } else {
+        fields.push('failed_login_attempts = failed_login_attempts + 1');
+        
+        // Lock account after 5 failed attempts for 15 minutes
+        const lockDuration = 15 * 60 * 1000; // 15 minutes in milliseconds
+        const lockUntil = new Date(Date.now() + lockDuration).toISOString();
+        fields.push('locked_until = CASE WHEN failed_login_attempts >= 4 THEN ? ELSE locked_until END');
+        params.push(lockUntil);
+    }
+    
+    params.push(id);
+    
+    return await db.run(
+        `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+        params
+    );
+};
+
+const getUsers = async (filters = {}) => {
+    let sql = 'SELECT id, username, role, client_name, email, phone, last_login, failed_login_attempts, locked_until, active, created_at FROM users WHERE 1=1';
+    const params = [];
+    
+    if (filters.role) {
+        sql += ' AND role = ?';
+        params.push(filters.role);
+    }
+    
+    if (filters.active !== undefined) {
+        sql += ' AND active = ?';
+        params.push(filters.active ? 1 : 0);
+    }
+    
+    if (filters.client_name) {
+        sql += ' AND client_name = ?';
+        params.push(filters.client_name);
+    }
+    
+    sql += ' ORDER BY created_at DESC';
+    
+    return await db.all(sql, params);
+};
+
+const deleteUser = async (id) => {
+    const user = await getUserById(id);
+    const result = await db.run('UPDATE users SET active = 0 WHERE id = ?', [id]);
+    
+    if (user) {
+        await logActivity('USER_DELETED', user.client_name, null, null, { userId: id, username: user.username });
+    }
+    
+    return result;
+};
+
 module.exports = {
     db,
     initDatabase,
@@ -611,5 +740,14 @@ module.exports = {
     // Network Stats
     addNetworkStats,
     getNetworkStats,
-    getNetworkStatsByClient
+    getNetworkStatsByClient,
+    
+    // Users
+    addUser,
+    getUserByUsername,
+    getUserById,
+    updateUser,
+    updateUserLoginInfo,
+    getUsers,
+    deleteUser
 };

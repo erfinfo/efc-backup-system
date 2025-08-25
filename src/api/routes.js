@@ -20,8 +20,10 @@ const {
 const backupScheduler = require('../backup/scheduler');
 const systemMonitor = require('../monitor/systemMonitor');
 const { testNotificationConfig } = require('../utils/notification');
+const AuthMiddleware = require('../middleware/auth');
 
-// Middleware pour les logs d'API
+// Middleware pour les logs d'API et sécurité
+router.use(AuthMiddleware.securityLogger);
 router.use((req, res, next) => {
     const start = Date.now();
     
@@ -33,15 +35,16 @@ router.use((req, res, next) => {
             statusCode: res.statusCode,
             duration,
             userAgent: req.get('User-Agent'),
-            ip: req.ip
+            ip: req.ip,
+            user: req.user ? req.user.username : 'anonymous'
         });
     });
     
     next();
 });
 
-// Routes Dashboard
-router.get('/dashboard', async (req, res) => {
+// Routes Dashboard (authentification requise)
+router.get('/dashboard', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const [clients, backupStats, systemStatus, scheduleStatus] = await Promise.all([
             getClients(),
@@ -78,10 +81,19 @@ router.get('/dashboard', async (req, res) => {
     }
 });
 
-// Routes Clients
-router.get('/clients', async (req, res) => {
+// Routes Clients (avec restrictions d'accès)
+router.get('/clients', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
-        const clients = await getClients();
+        let clients;
+        
+        // Admin peut voir tous les clients, client ne peut voir que le sien
+        if (req.user.role === 'admin') {
+            clients = await getClients();
+        } else {
+            // Client ne peut voir que son propre client
+            clients = await getClients({ names: [req.user.clientName] });
+        }
+        
         res.json(clients);
     } catch (error) {
         logger.error('Erreur API get clients:', error);
@@ -89,7 +101,7 @@ router.get('/clients', async (req, res) => {
     }
 });
 
-router.post('/clients', async (req, res) => {
+router.post('/clients', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const { name, host, port, username, password, folders, backup_type, os_type } = req.body;
         
@@ -120,7 +132,7 @@ router.post('/clients', async (req, res) => {
     }
 });
 
-router.get('/clients/:id', async (req, res) => {
+router.get('/clients/:id', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
         const client = await getClient(req.params.id);
         if (!client) {
@@ -136,7 +148,7 @@ router.get('/clients/:id', async (req, res) => {
     }
 });
 
-router.put('/clients/:id', async (req, res) => {
+router.put('/clients/:id', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const client = await getClient(req.params.id);
         if (!client) {
@@ -152,7 +164,7 @@ router.put('/clients/:id', async (req, res) => {
     }
 });
 
-router.delete('/clients/:id', async (req, res) => {
+router.delete('/clients/:id', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const client = await getClient(req.params.id);
         if (!client) {
@@ -169,11 +181,17 @@ router.delete('/clients/:id', async (req, res) => {
 });
 
 // Routes Backups
-router.get('/backups', async (req, res) => {
+router.get('/backups', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
         const filters = {};
         
-        if (req.query.client_name) filters.client_name = req.query.client_name;
+        // Client ne peut voir que ses propres backups
+        if (req.user.role === 'client') {
+            filters.client_name = req.user.clientName;
+        } else if (req.query.client_name) {
+            filters.client_name = req.query.client_name;
+        }
+        
         if (req.query.status) filters.status = req.query.status;
         if (req.query.type) filters.type = req.query.type;
         if (req.query.limit) filters.limit = parseInt(req.query.limit);
@@ -187,7 +205,7 @@ router.get('/backups', async (req, res) => {
     }
 });
 
-router.get('/backups/stats', async (req, res) => {
+router.get('/backups/stats', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const stats = await getBackupStats();
         res.json(stats);
@@ -197,7 +215,7 @@ router.get('/backups/stats', async (req, res) => {
     }
 });
 
-router.post('/backups/start', async (req, res) => {
+router.post('/backups/start', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const { clients, type = 'full' } = req.body;
         
@@ -217,7 +235,7 @@ router.post('/backups/start', async (req, res) => {
 });
 
 // Routes Scheduler
-router.get('/schedules', async (req, res) => {
+router.get('/schedules', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const schedules = await getSchedules();
         const status = backupScheduler.getScheduleStatus();
@@ -232,7 +250,7 @@ router.get('/schedules', async (req, res) => {
     }
 });
 
-router.post('/schedules', async (req, res) => {
+router.post('/schedules', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const { name, cron_pattern, backup_type, client_names, description } = req.body;
         
@@ -260,7 +278,7 @@ router.post('/schedules', async (req, res) => {
     }
 });
 
-router.delete('/schedules/:name', async (req, res) => {
+router.delete('/schedules/:name', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const success = backupScheduler.removeSchedule(req.params.name);
         
@@ -277,7 +295,7 @@ router.delete('/schedules/:name', async (req, res) => {
 });
 
 // Routes System Monitoring
-router.get('/system/status', async (req, res) => {
+router.get('/system/status', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const status = await systemMonitor.getSystemStatus();
         res.json(status);
@@ -287,7 +305,7 @@ router.get('/system/status', async (req, res) => {
     }
 });
 
-router.get('/system/metrics/:metric', async (req, res) => {
+router.get('/system/metrics/:metric', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const { metric } = req.params;
         const hours = parseInt(req.query.hours) || 24;
@@ -300,7 +318,7 @@ router.get('/system/metrics/:metric', async (req, res) => {
     }
 });
 
-router.post('/system/health-check', async (req, res) => {
+router.post('/system/health-check', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const health = await systemMonitor.performHealthCheck();
         res.json(health);
@@ -311,12 +329,12 @@ router.post('/system/health-check', async (req, res) => {
 });
 
 // Routes Logs
-router.get('/logs', async (req, res) => {
+router.get('/logs', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
         const options = {
             level: req.query.level || 'info',
             limit: parseInt(req.query.limit) || 100,
-            clientName: req.query.client,
+            clientName: req.user.role === 'client' ? req.user.clientName : req.query.client,
             since: req.query.since
         };
 
@@ -328,7 +346,7 @@ router.get('/logs', async (req, res) => {
     }
 });
 
-router.get('/logs/stats', async (req, res) => {
+router.get('/logs/stats', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const stats = await getLogStats();
         res.json(stats);
@@ -339,7 +357,7 @@ router.get('/logs/stats', async (req, res) => {
 });
 
 // Routes pour logs spécifiques aux clients
-router.get('/logs/clients', async (req, res) => {
+router.get('/logs/clients', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const clients = getClientsWithLogs();
         res.json(clients);
@@ -349,7 +367,7 @@ router.get('/logs/clients', async (req, res) => {
     }
 });
 
-router.get('/logs/clients/:clientName', async (req, res) => {
+router.get('/logs/clients/:clientName', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
         const { clientName } = req.params;
         const options = {
@@ -368,7 +386,7 @@ router.get('/logs/clients/:clientName', async (req, res) => {
 });
 
 // Routes Activity
-router.get('/activity', async (req, res) => {
+router.get('/activity', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 50;
         const activities = await getActivityLogs(limit);
@@ -380,7 +398,7 @@ router.get('/activity', async (req, res) => {
 });
 
 // Routes Settings
-router.get('/settings', async (req, res) => {
+router.get('/settings', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const settings = {};
         const settingKeys = [
@@ -401,7 +419,7 @@ router.get('/settings', async (req, res) => {
     }
 });
 
-router.put('/settings', async (req, res) => {
+router.put('/settings', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const updates = [];
         
@@ -419,7 +437,7 @@ router.put('/settings', async (req, res) => {
 });
 
 // Routes Test et Diagnostic
-router.post('/test/notification', async (req, res) => {
+router.post('/test/notification', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const result = await testNotificationConfig();
         res.json(result);
@@ -429,7 +447,7 @@ router.post('/test/notification', async (req, res) => {
     }
 });
 
-router.post('/test/client-connection', async (req, res) => {
+router.post('/test/client-connection', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const { host, port = 22, username, password, os_type = 'windows' } = req.body;
         
@@ -470,10 +488,18 @@ router.post('/test/client-connection', async (req, res) => {
 });
 
 // Routes Network Statistics
-router.get('/network/stats', async (req, res) => {
+router.get('/network/stats', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
         const limit = parseInt(req.query.limit) || 50;
-        const stats = await getNetworkStats(limit);
+        let stats;
+        
+        // Client ne peut voir que ses propres stats
+        if (req.user.role === 'client') {
+            stats = await getNetworkStatsByClient(req.user.clientName, limit);
+        } else {
+            stats = await getNetworkStats(limit);
+        }
+        
         res.json(stats);
     } catch (error) {
         logger.error('Erreur API network stats:', error);
@@ -481,7 +507,7 @@ router.get('/network/stats', async (req, res) => {
     }
 });
 
-router.get('/network/stats/:clientName', async (req, res) => {
+router.get('/network/stats/:clientName', AuthMiddleware.requireClientAccess, async (req, res) => {
     try {
         const { clientName } = req.params;
         const limit = parseInt(req.query.limit) || 10;

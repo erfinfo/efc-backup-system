@@ -1003,8 +1003,54 @@ input[type="date"] {
     }
 }
 
+/* Styles pour l'interface utilisateur */
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 6px;
+    margin-right: 1rem;
+}
+
+.user-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.user-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+
+.user-role {
+    font-size: 0.75rem;
+    color: var(--primary-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.user-client {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
 /* Responsive pour configuration */
 @media (max-width: 768px) {
+    .user-info {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        margin-right: 0.5rem;
+    }
+    
+    .user-details {
+        text-align: center;
+    }
     .form-row {
         grid-template-columns: 1fr;
     }

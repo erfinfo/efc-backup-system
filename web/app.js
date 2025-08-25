@@ -1,14 +1,24 @@
 // Configuration de l'application
 const API_URL = window.location.origin + '/api';
+const AUTH_URL = window.location.origin + '/auth';
 let currentSection = 'dashboard';
 let clients = [];
 let backups = [];
+let currentUser = null;
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
-    setupEventListeners();
-    loadDashboardData();
+    checkAuthStatus().then(authenticated => {
+        if (!authenticated) {
+            window.location.href = '/login.html';
+            return;
+        }
+        
+        initializeApp();
+        setupEventListeners();
+        loadDashboardData();
+        setupUserInterface();
+    });
 });
 
 function initializeApp() {
@@ -1901,4 +1911,130 @@ function updateExecutiveSummary(data) {
     
     const rateColor = successRate > 95 ? '#5d8052' : successRate > 85 ? '#f39c12' : '#e74c3c';
     document.getElementById('success-rate').style.color = rateColor;
+}
+
+// Fonctions d'authentification
+async function checkAuthStatus() {
+    try {
+        const response = await fetch(`${AUTH_URL}/verify`, {
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            currentUser = data.user;
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('Erreur de vérification auth:', error);
+        return false;
+    }
+}
+
+function setupUserInterface() {
+    if (!currentUser) return;
+    
+    // Afficher les informations utilisateur
+    const header = document.querySelector('.header');
+    if (header && !document.getElementById('user-info')) {
+        const userInfo = document.createElement('div');
+        userInfo.id = 'user-info';
+        userInfo.className = 'user-info';
+        userInfo.innerHTML = `
+            <div class="user-details">
+                <span class="user-name">${currentUser.username}</span>
+                <span class="user-role">${currentUser.role === 'admin' ? 'Administrateur' : 'Client'}</span>
+                ${currentUser.client_name ? `<span class="user-client">${currentUser.client_name}</span>` : ''}
+            </div>
+            <button class="btn btn-secondary" onclick="logout()">
+                🚪 Déconnexion
+            </button>
+        `;
+        
+        // Insérer avant les actions existantes
+        const headerActions = header.querySelector('.header-actions');
+        if (headerActions) {
+            header.insertBefore(userInfo, headerActions);
+        }
+    }
+
+    // Masquer/afficher les éléments selon le rôle
+    if (currentUser.role === 'client') {
+        // Masquer les fonctions admin
+        const adminElements = [
+            'button[onclick="showAddClientModal()"]',
+            'button[onclick="startManualBackup()"]',
+            '.nav-menu a[href="#settings"]',
+            '.nav-menu a[href="#config"]',
+            '.nav-menu a[href="#system"]',
+            '.nav-menu a[href="#schedule"]'
+        ];
+        
+        adminElements.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+                if (el) el.style.display = 'none';
+            });
+        });
+
+        // Rediriger vers dashboard si sur une page admin
+        const adminSections = ['settings', 'config', 'system', 'schedule'];
+        if (adminSections.includes(currentSection)) {
+            navigateToSection('dashboard');
+        }
+    }
+}
+
+async function logout() {
+    try {
+        const response = await fetch(`${AUTH_URL}/logout`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+
+        if (response.ok) {
+            window.location.href = '/login.html';
+        } else {
+            console.error('Erreur lors de la déconnexion');
+        }
+    } catch (error) {
+        console.error('Erreur de déconnexion:', error);
+        // Forcer la redirection en cas d'erreur
+        window.location.href = '/login.html';
+    }
+}
+
+// Modifier toutes les requêtes API pour inclure les credentials
+async function apiRequest(url, options = {}) {
+    const defaultOptions = {
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    };
+
+    const mergedOptions = {
+        ...defaultOptions,
+        ...options,
+        headers: {
+            ...defaultOptions.headers,
+            ...(options.headers || {})
+        }
+    };
+
+    try {
+        const response = await fetch(url, mergedOptions);
+        
+        if (response.status === 401) {
+            // Token expiré, rediriger vers login
+            window.location.href = '/login.html';
+            return null;
+        }
+
+        return response;
+    } catch (error) {
+        console.error('Erreur API:', error);
+        throw error;
+    }
 }
