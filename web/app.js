@@ -83,7 +83,9 @@ function navigateToSection(section) {
         'schedule': 'Planification',
         'logs': 'Logs Système',
         'settings': 'Paramètres',
+        'users': 'Gestion des Utilisateurs',
         'config': 'Configuration Serveur',
+        'ssl': 'Configuration SSL/HTTPS',
         'network': 'Trafic Réseau',
         'system': 'État du Système'
     };
@@ -227,8 +229,14 @@ async function loadSectionData(section) {
         case 'settings':
             loadSettings();
             break;
+        case 'users':
+            loadUsersPage();
+            break;
         case 'config':
             loadServerConfig();
+            break;
+        case 'ssl':
+            loadSSLPage();
             break;
         case 'network':
             await loadNetworkTraffic();
@@ -1947,9 +1955,14 @@ function setupUserInterface() {
                 <span class="user-role">${currentUser.role === 'admin' ? 'Administrateur' : 'Client'}</span>
                 ${currentUser.client_name ? `<span class="user-client">${currentUser.client_name}</span>` : ''}
             </div>
-            <button class="btn btn-secondary" onclick="logout()">
-                🚪 Déconnexion
-            </button>
+            <div class="user-actions">
+                <button class="change-password-btn" onclick="openPasswordModal()">
+                    Changer mot de passe
+                </button>
+                <button class="btn btn-secondary" onclick="logout()">
+                    Déconnexion
+                </button>
+            </div>
         `;
         
         // Insérer avant les actions existantes
@@ -2037,4 +2050,1021 @@ async function apiRequest(url, options = {}) {
         console.error('Erreur API:', error);
         throw error;
     }
+}
+
+// ============= FONCTIONS SSL/HTTPS =============
+
+async function loadSSLPage() {
+    try {
+        // Charger automatiquement le statut SSL et les prérequis
+        await Promise.all([
+            checkSSLStatus(),
+            checkSSLPrerequisites()
+        ]);
+    } catch (error) {
+        console.error('Erreur lors du chargement de la page SSL:', error);
+        showNotification('Erreur lors du chargement de la page SSL', 'error');
+    }
+}
+
+async function checkSSLStatus() {
+    try {
+        showNotification('Vérification du statut SSL...', 'info');
+        
+        const response = await apiRequest(`${API_URL}/ssl/status`);
+        if (response && response.ok) {
+            const data = await response.json();
+            updateSSLStatus(data.status);
+            
+            // Charger les informations certificat si disponible
+            if (data.status.certificateExists) {
+                await loadCertificateInfo();
+            }
+            
+            showNotification('Statut SSL vérifié', 'success');
+        } else {
+            throw new Error('Erreur lors de la vérification SSL');
+        }
+    } catch (error) {
+        console.error('Erreur vérification SSL:', error);
+        showNotification('Erreur lors de la vérification SSL', 'error');
+    }
+}
+
+function updateSSLStatus(status) {
+    // Mettre à jour le statut du certificat
+    const certStatus = document.getElementById('ssl-cert-status');
+    if (certStatus) {
+        certStatus.textContent = status.certificateExists && status.certificateValid ? 
+            '✅ Valide' : '❌ Non configuré';
+        certStatus.className = status.certificateExists && status.certificateValid ? 
+            'status-success' : 'status-error';
+    }
+
+    // Mettre à jour le statut Apache
+    const apacheStatus = document.getElementById('ssl-apache-status');
+    if (apacheStatus) {
+        apacheStatus.textContent = status.apacheConfigured && status.sslSiteEnabled ? 
+            '✅ Configuré' : '❌ Non configuré';
+        apacheStatus.className = status.apacheConfigured && status.sslSiteEnabled ? 
+            'status-success' : 'status-error';
+    }
+
+    // Mettre à jour le statut de renouvellement
+    const renewalStatus = document.getElementById('ssl-renewal-status');
+    if (renewalStatus) {
+        renewalStatus.textContent = status.autoRenewalActive ? 
+            '✅ Actif' : '❌ Inactif';
+        renewalStatus.className = status.autoRenewalActive ? 
+            'status-success' : 'status-error';
+    }
+
+    // Mettre à jour la date d'expiration
+    const expiryStatus = document.getElementById('ssl-expiry-status');
+    if (expiryStatus) {
+        if (status.expiryDate) {
+            const expiryDate = new Date(status.expiryDate);
+            const now = new Date();
+            const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+            
+            expiryStatus.textContent = expiryDate.toLocaleDateString('fr-FR') + ` (${daysLeft}j)`;
+            expiryStatus.className = daysLeft < 30 ? 'status-warning' : 'status-success';
+        } else {
+            expiryStatus.textContent = '-';
+            expiryStatus.className = '';
+        }
+    }
+
+    // Mettre à jour l'heure de dernière vérification
+    const lastCheck = document.getElementById('ssl-last-check');
+    if (lastCheck) {
+        lastCheck.textContent = new Date().toLocaleString('fr-FR');
+    }
+
+    // Activer/désactiver les boutons selon l'état
+    const setupBtn = document.getElementById('ssl-setup-btn');
+    const renewBtn = document.querySelector('button[onclick="renewSSLCertificate()"]');
+    
+    if (setupBtn) {
+        if (status.certificateExists && status.certificateValid) {
+            setupBtn.textContent = '🔄 Reconfigurer SSL';
+            setupBtn.className = 'btn btn-warning';
+        } else {
+            setupBtn.textContent = '🔒 Configurer SSL';
+            setupBtn.className = 'btn btn-success';
+        }
+    }
+    
+    if (renewBtn) {
+        renewBtn.disabled = !(status.certificateExists && status.certificateValid);
+    }
+}
+
+async function checkSSLPrerequisites() {
+    try {
+        const response = await apiRequest(`${API_URL}/ssl/prerequisites`);
+        if (response && response.ok) {
+            const data = await response.json();
+            updateSSLPrerequisites(data.prerequisites);
+        }
+    } catch (error) {
+        console.error('Erreur vérification prérequis SSL:', error);
+    }
+}
+
+function updateSSLPrerequisites(prerequisites) {
+    const grid = document.getElementById('ssl-prerequisites-grid');
+    if (!grid) return;
+
+    const checks = [
+        { key: 'dns', label: 'DNS résolu pour backup.efcinfo.com' },
+        { key: 'apache', label: 'Apache2 installé et fonctionnel' },
+        { key: 'certbot', label: 'Certbot disponible' },
+        { key: 'ports', label: 'Ports 80/443 accessibles' }
+    ];
+
+    grid.innerHTML = checks.map(check => {
+        const status = prerequisites.checks[check.key];
+        const icon = status ? '✅' : '❌';
+        return `
+            <div class="prerequisite-item">
+                <span class="check-icon">${icon}</span>
+                <span>${check.label}</span>
+            </div>
+        `;
+    }).join('');
+
+    // Afficher les recommandations
+    if (prerequisites.recommendations.length > 0) {
+        const warning = document.getElementById('ssl-warning');
+        if (warning) {
+            warning.style.display = 'block';
+            warning.innerHTML = `
+                <p><strong>⚠️ Prérequis manquants :</strong></p>
+                <ul>
+                    ${prerequisites.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                </ul>
+            `;
+        }
+    }
+}
+
+async function setupSSL() {
+    if (!confirm('La configuration SSL peut prendre 5-10 minutes. Voulez-vous continuer ?')) {
+        return;
+    }
+
+    try {
+        showNotification('Configuration SSL en cours... Cela peut prendre plusieurs minutes.', 'info');
+        
+        const setupBtn = document.getElementById('ssl-setup-btn');
+        if (setupBtn) {
+            setupBtn.disabled = true;
+            setupBtn.textContent = '⏳ Configuration en cours...';
+        }
+
+        // Timeout de 10 minutes pour la configuration SSL
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Timeout: Configuration SSL trop longue')), 600000);
+        });
+
+        const setupPromise = apiRequest(`${API_URL}/ssl/setup`, {
+            method: 'POST'
+        });
+
+        const response = await Promise.race([setupPromise, timeoutPromise]);
+
+        if (response && response.ok) {
+            const data = await response.json();
+            showNotification('SSL configuré avec succès ! HTTPS est maintenant actif.', 'success');
+            
+            // Recharger le statut
+            await checkSSLStatus();
+            
+            // Proposer de rediriger vers HTTPS
+            if (confirm('SSL configuré ! Voulez-vous accéder au site en HTTPS maintenant ?')) {
+                window.location.href = 'https://backup.efcinfo.com';
+            }
+        } else {
+            const error = await response.json();
+            throw new Error(error.details || 'Erreur lors de la configuration SSL');
+        }
+    } catch (error) {
+        console.error('Erreur setup SSL:', error);
+        showNotification(`Erreur configuration SSL: ${error.message}`, 'error');
+    } finally {
+        const setupBtn = document.getElementById('ssl-setup-btn');
+        if (setupBtn) {
+            setupBtn.disabled = false;
+            setupBtn.textContent = '🔒 Configurer SSL';
+        }
+    }
+}
+
+async function renewSSLCertificate() {
+    if (!confirm('Voulez-vous renouveler le certificat SSL ?')) {
+        return;
+    }
+
+    try {
+        showNotification('Renouvellement du certificat SSL...', 'info');
+        
+        const response = await apiRequest(`${API_URL}/ssl/renew`, {
+            method: 'POST'
+        });
+
+        if (response && response.ok) {
+            showNotification('Certificat SSL renouvelé avec succès', 'success');
+            await checkSSLStatus();
+        } else {
+            const error = await response.json();
+            throw new Error(error.details || 'Erreur lors du renouvellement');
+        }
+    } catch (error) {
+        console.error('Erreur renouvellement SSL:', error);
+        showNotification(`Erreur renouvellement SSL: ${error.message}`, 'error');
+    }
+}
+
+async function testSSLConfiguration() {
+    try {
+        showNotification('Test de la configuration SSL...', 'info');
+        
+        const response = await apiRequest(`${API_URL}/ssl/test`, {
+            method: 'POST'
+        });
+
+        if (response && response.ok) {
+            const data = await response.json();
+            const testResult = data.test;
+            
+            let message = 'Test SSL : ';
+            if (testResult.local) message += 'Local ✅ ';
+            if (testResult.external) message += 'Externe ✅';
+            
+            showNotification(message, 'success');
+        } else {
+            throw new Error('Erreur lors du test SSL');
+        }
+    } catch (error) {
+        console.error('Erreur test SSL:', error);
+        showNotification(`Erreur test SSL: ${error.message}`, 'error');
+    }
+}
+
+async function loadCertificateInfo() {
+    try {
+        const response = await apiRequest(`${API_URL}/ssl/certificate-info`);
+        if (response && response.ok) {
+            const data = await response.json();
+            
+            if (data.exists) {
+                document.getElementById('cert-subject').textContent = data.certificate.subject;
+                document.getElementById('cert-issuer').textContent = data.certificate.issuer;
+                document.getElementById('cert-valid-from').textContent = data.certificate.validFrom;
+                document.getElementById('cert-valid-to').textContent = data.certificate.validTo;
+                document.getElementById('cert-serial').textContent = data.certificate.serialNumber;
+                
+                document.getElementById('ssl-cert-info').style.display = 'block';
+            }
+        }
+    } catch (error) {
+        console.error('Erreur chargement info certificat:', error);
+    }
+}
+
+function showSSLTab(tab) {
+    // Gérer les onglets
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+    
+    document.querySelector(`button[onclick="showSSLTab('${tab}')"]`).classList.add('active');
+    document.getElementById(`ssl-${tab}-tab`).classList.add('active');
+    
+    // Charger le contenu selon l'onglet
+    if (tab === 'logs') {
+        refreshSSLLogs();
+    } else if (tab === 'config') {
+        refreshSSLConfig();
+    }
+}
+
+async function refreshSSLLogs() {
+    const logType = document.getElementById('ssl-log-type').value;
+    const logsContent = document.getElementById('ssl-logs-content');
+    
+    try {
+        logsContent.textContent = 'Chargement des logs...';
+        
+        const response = await apiRequest(`${API_URL}/ssl/logs?lines=100`);
+        if (response && response.ok) {
+            const data = await response.json();
+            const logs = data.logs;
+            
+            let content = '';
+            switch (logType) {
+                case 'access':
+                    content = logs.apache.access.join('\n');
+                    break;
+                case 'error':
+                    content = logs.apache.error.join('\n');
+                    break;
+                case 'ssl-access':
+                    content = logs.apache.sslAccess.join('\n');
+                    break;
+                case 'ssl-error':
+                    content = logs.apache.sslError.join('\n');
+                    break;
+                case 'certbot':
+                    content = logs.certbot.join('\n');
+                    break;
+            }
+            
+            logsContent.textContent = content || 'Aucun log disponible';
+        }
+    } catch (error) {
+        logsContent.textContent = 'Erreur lors du chargement des logs';
+        console.error('Erreur logs SSL:', error);
+    }
+}
+
+async function refreshSSLConfig() {
+    const configType = document.getElementById('ssl-config-type').value;
+    const configContent = document.getElementById('ssl-config-content');
+    
+    try {
+        configContent.textContent = 'Chargement de la configuration...';
+        
+        const response = await apiRequest(`${API_URL}/ssl/apache-config`);
+        if (response && response.ok) {
+            const data = await response.json();
+            const configs = data.configs;
+            
+            let content = '';
+            if (configType === 'http' && configs.http.exists) {
+                content = configs.http.config;
+            } else if (configType === 'ssl' && configs.ssl.exists) {
+                content = configs.ssl.config;
+            } else {
+                content = `Configuration ${configType} non trouvée`;
+            }
+            
+            configContent.textContent = content;
+        }
+    } catch (error) {
+        configContent.textContent = 'Erreur lors du chargement de la configuration';
+        console.error('Erreur config SSL:', error);
+    }
+}
+
+// ============= FONCTIONS GESTION UTILISATEURS =============
+
+let allUsers = [];
+let filteredUsers = [];
+let currentEditingUserId = null;
+
+async function loadUsersPage() {
+    try {
+        // Charger automatiquement la liste des utilisateurs et les statistiques
+        await Promise.all([
+            loadUsersList(),
+            loadUserStats(),
+            loadClientsForUserSelection()
+        ]);
+    } catch (error) {
+        console.error('Erreur lors du chargement de la page utilisateurs:', error);
+        showNotification('Erreur lors du chargement de la page utilisateurs', 'error');
+    }
+}
+
+async function loadUsersList() {
+    try {
+        const response = await apiRequest(`${API_URL}/users`);
+        if (response && response.ok) {
+            const users = await response.json();
+            allUsers = users;
+            filteredUsers = [...users];
+            renderUsersTable();
+            showNotification('Liste des utilisateurs chargée', 'success');
+        } else {
+            throw new Error('Erreur lors du chargement des utilisateurs');
+        }
+    } catch (error) {
+        console.error('Erreur chargement utilisateurs:', error);
+        showNotification('Erreur lors du chargement des utilisateurs', 'error');
+        
+        // Afficher une erreur dans le tableau
+        const tbody = document.getElementById('users-table-body');
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="error-cell">
+                        Erreur lors du chargement des utilisateurs
+                        <br><button class="btn btn-sm btn-secondary" onclick="loadUsersList()">Réessayer</button>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+async function loadUserStats() {
+    try {
+        const response = await apiRequest(`${API_URL}/users/stats`);
+        if (response && response.ok) {
+            const stats = await response.json();
+            
+            document.getElementById('total-users').textContent = stats.total || '0';
+            document.getElementById('admin-users').textContent = stats.admins || '0';
+            document.getElementById('client-users').textContent = stats.clients || '0';
+            document.getElementById('active-sessions').textContent = stats.activeSessions || '0';
+        }
+    } catch (error) {
+        console.error('Erreur chargement statistiques utilisateurs:', error);
+    }
+}
+
+async function loadClientsForUserSelection() {
+    try {
+        const response = await apiRequest(`${API_URL}/clients`);
+        if (response && response.ok) {
+            const clients = await response.json();
+            const clientSelect = document.getElementById('user-client');
+            
+            if (clientSelect) {
+                clientSelect.innerHTML = '<option value="">Aucun client associé</option>';
+                clients.forEach(client => {
+                    const option = document.createElement('option');
+                    option.value = client.name;
+                    option.textContent = `${client.name} (${client.host})`;
+                    clientSelect.appendChild(option);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Erreur chargement clients pour sélection:', error);
+    }
+}
+
+function renderUsersTable() {
+    const tbody = document.getElementById('users-table-body');
+    if (!tbody) return;
+
+    if (filteredUsers.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" class="empty-cell">
+                    Aucun utilisateur trouvé
+                    <br><button class="btn btn-primary btn-sm" onclick="showAddUserModal()">➕ Ajouter un utilisateur</button>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = filteredUsers.map(user => {
+        // Suppression des icônes pour rester cohérent avec le menu
+        const lastLogin = user.last_login ? 
+            new Date(user.last_login).toLocaleString('fr-FR') : 
+            'Jamais connecté';
+        const createdAt = new Date(user.created_at).toLocaleString('fr-FR');
+        
+        return `
+            <tr data-user-id="${user.id}">
+                <td>
+                    <div class="user-info">
+                        <strong>${user.username}</strong>
+                        ${!user.active ? '<span class="status-badge inactive">Inactif</span>' : ''}
+                    </div>
+                </td>
+                <td>${user.email}</td>
+                <td>
+                    <span class="role-badge ${user.role}">
+                        ${user.role === 'admin' ? 'Admin' : 'Client'}
+                    </span>
+                </td>
+                <td>${user.client_name || '-'}</td>
+                <td class="text-small">${lastLogin}</td>
+                <td class="text-small">${createdAt}</td>
+                <td class="actions-cell">
+                    <div class="action-buttons">
+                        <button class="btn btn-sm btn-secondary" onclick="editUser(${user.id})" title="Modifier">
+                            Modifier
+                        </button>
+                        <button class="btn btn-sm btn-warning" onclick="showPasswordChangeModal(${user.id})" title="Changer MDP">
+                            MDP
+                        </button>
+                        ${user.id !== 1 ? `
+                            <button class="btn btn-sm ${user.active ? 'btn-warning' : 'btn-success'}" 
+                                    onclick="toggleUserStatus(${user.id})" 
+                                    title="${user.active ? 'Désactiver' : 'Activer'}">
+                                ${user.active ? 'Désactiver' : 'Activer'}
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})" title="Supprimer">
+                                Supprimer
+                            </button>
+                        ` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filterUsers() {
+    const searchTerm = document.getElementById('user-search').value.toLowerCase();
+    const roleFilter = document.getElementById('role-filter').value;
+    const statusFilter = document.getElementById('status-filter').value;
+
+    filteredUsers = allUsers.filter(user => {
+        const matchesSearch = user.username.toLowerCase().includes(searchTerm) ||
+                            user.email.toLowerCase().includes(searchTerm) ||
+                            (user.client_name && user.client_name.toLowerCase().includes(searchTerm));
+        
+        const matchesRole = !roleFilter || user.role === roleFilter;
+        const matchesStatus = !statusFilter || 
+                            (statusFilter === 'active' && user.active) ||
+                            (statusFilter === 'inactive' && !user.active);
+
+        return matchesSearch && matchesRole && matchesStatus;
+    });
+
+    renderUsersTable();
+}
+
+function sortUsers(column) {
+    // Implémentation simple du tri
+    filteredUsers.sort((a, b) => {
+        if (column === 'username' || column === 'email' || column === 'role') {
+            return a[column].localeCompare(b[column]);
+        } else if (column === 'created_at' || column === 'last_login') {
+            return new Date(b[column] || 0) - new Date(a[column] || 0);
+        }
+        return 0;
+    });
+    
+    renderUsersTable();
+}
+
+function showAddUserModal() {
+    currentEditingUserId = null;
+    document.getElementById('user-modal-title').textContent = '➕ Ajouter un utilisateur';
+    document.getElementById('user-form').reset();
+    document.getElementById('user-active').checked = true;
+    document.getElementById('password-section').style.display = 'flex';
+    document.getElementById('client-selection').style.display = 'none';
+    
+    // Rendre les champs mot de passe requis
+    document.getElementById('user-password').required = true;
+    document.getElementById('user-password-confirm').required = true;
+    
+    document.getElementById('user-modal').style.display = 'block';
+}
+
+function editUser(userId) {
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) {
+        showNotification('Utilisateur non trouvé', 'error');
+        return;
+    }
+
+    currentEditingUserId = userId;
+    document.getElementById('user-modal-title').textContent = '✏️ Modifier l\'utilisateur';
+    
+    // Remplir le formulaire
+    document.getElementById('user-username').value = user.username;
+    document.getElementById('user-email').value = user.email;
+    document.getElementById('user-role').value = user.role;
+    document.getElementById('user-client').value = user.client_name || '';
+    document.getElementById('user-active').checked = user.active;
+    document.getElementById('user-force-password-change').checked = user.force_password_change;
+    
+    // Masquer les champs mot de passe en mode édition
+    document.getElementById('password-section').style.display = 'none';
+    document.getElementById('user-password').required = false;
+    document.getElementById('user-password-confirm').required = false;
+    
+    // Gérer la sélection de client
+    toggleClientSelection();
+    
+    document.getElementById('user-modal').style.display = 'block';
+}
+
+function toggleClientSelection() {
+    const role = document.getElementById('user-role').value;
+    const clientSelection = document.getElementById('client-selection');
+    
+    if (role === 'client') {
+        clientSelection.style.display = 'block';
+    } else {
+        clientSelection.style.display = 'none';
+        document.getElementById('user-client').value = '';
+    }
+}
+
+async function saveUser(event) {
+    event.preventDefault();
+    
+    try {
+        const formData = new FormData(event.target);
+        const userData = {
+            username: formData.get('username').trim(),
+            email: formData.get('email').trim(),
+            role: formData.get('role'),
+            client_name: formData.get('client_name') || null,
+            active: formData.has('active'),
+            force_password_change: formData.has('forcePasswordChange')
+        };
+
+        // Validation côté client
+        if (!userData.username || userData.username.length < 3) {
+            throw new Error('Le nom d\'utilisateur doit faire au moins 3 caractères');
+        }
+
+        if (!userData.email || !userData.email.includes('@')) {
+            throw new Error('Adresse email invalide');
+        }
+
+        if (!userData.role) {
+            throw new Error('Le rôle est obligatoire');
+        }
+
+        // Gestion du mot de passe pour les nouveaux utilisateurs
+        if (!currentEditingUserId) {
+            const password = formData.get('password');
+            const passwordConfirm = formData.get('passwordConfirm');
+            
+            if (!password || password.length < 8) {
+                throw new Error('Le mot de passe doit faire au moins 8 caractères');
+            }
+            
+            if (password !== passwordConfirm) {
+                throw new Error('Les mots de passe ne correspondent pas');
+            }
+            
+            userData.password = password;
+        }
+
+        // Permissions spéciales
+        userData.permissions = {
+            can_view_logs: formData.has('can_view_logs'),
+            can_download_backups: formData.has('can_download_backups'),
+            can_start_backups: formData.has('can_start_backups'),
+            can_manage_schedule: formData.has('can_manage_schedule')
+        };
+
+        showNotification('Sauvegarde de l\'utilisateur...', 'info');
+
+        const url = currentEditingUserId ? 
+            `${API_URL}/users/${currentEditingUserId}` : 
+            `${API_URL}/users`;
+        
+        const method = currentEditingUserId ? 'PUT' : 'POST';
+
+        const response = await apiRequest(url, {
+            method,
+            body: JSON.stringify(userData)
+        });
+
+        if (response && response.ok) {
+            const savedUser = await response.json();
+            showNotification(
+                currentEditingUserId ? 'Utilisateur modifié avec succès' : 'Utilisateur créé avec succès', 
+                'success'
+            );
+            
+            closeUserModal();
+            await loadUsersList();
+            await loadUserStats();
+            
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de la sauvegarde');
+        }
+
+    } catch (error) {
+        console.error('Erreur sauvegarde utilisateur:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
+function closeUserModal() {
+    document.getElementById('user-modal').style.display = 'none';
+    currentEditingUserId = null;
+}
+
+function showPasswordChangeModal(userId) {
+    const user = allUsers.find(u => u.id === userId);
+    if (!user) {
+        showNotification('Utilisateur non trouvé', 'error');
+        return;
+    }
+
+    currentEditingUserId = userId;
+    document.getElementById('password-change-form').reset();
+    document.getElementById('force-logout').checked = true;
+    document.getElementById('password-change-modal').style.display = 'block';
+}
+
+async function changeUserPassword(event) {
+    event.preventDefault();
+    
+    try {
+        const formData = new FormData(event.target);
+        const newPassword = formData.get('newPassword');
+        const newPasswordConfirm = formData.get('newPasswordConfirm');
+        const forceLogout = formData.has('forceLogout');
+
+        if (!newPassword || newPassword.length < 8) {
+            throw new Error('Le mot de passe doit faire au moins 8 caractères');
+        }
+
+        if (newPassword !== newPasswordConfirm) {
+            throw new Error('Les mots de passe ne correspondent pas');
+        }
+
+        showNotification('Changement du mot de passe...', 'info');
+
+        const response = await apiRequest(`${API_URL}/users/${currentEditingUserId}/password`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                newPassword,
+                forceLogout
+            })
+        });
+
+        if (response && response.ok) {
+            showNotification('Mot de passe changé avec succès', 'success');
+            closePasswordModal();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors du changement de mot de passe');
+        }
+
+    } catch (error) {
+        console.error('Erreur changement mot de passe:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
+function closePasswordModal() {
+    document.getElementById('password-change-modal').style.display = 'none';
+    currentEditingUserId = null;
+}
+
+async function toggleUserStatus(userId) {
+    try {
+        const user = allUsers.find(u => u.id === userId);
+        if (!user) return;
+
+        const newStatus = !user.active;
+        const action = newStatus ? 'activer' : 'désactiver';
+
+        if (!confirm(`Voulez-vous ${action} l'utilisateur "${user.username}" ?`)) {
+            return;
+        }
+
+        showNotification(`${action === 'activer' ? 'Activation' : 'Désactivation'} de l'utilisateur...`, 'info');
+
+        const response = await apiRequest(`${API_URL}/users/${userId}/toggle`, {
+            method: 'PUT'
+        });
+
+        if (response && response.ok) {
+            showNotification(`Utilisateur ${action === 'activer' ? 'activé' : 'désactivé'} avec succès`, 'success');
+            await loadUsersList();
+            await loadUserStats();
+        } else {
+            throw new Error(`Erreur lors de la ${action === 'activer' ? 'activation' : 'désactivation'}`);
+        }
+
+    } catch (error) {
+        console.error('Erreur toggle statut utilisateur:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
+async function deleteUser(userId) {
+    try {
+        const user = allUsers.find(u => u.id === userId);
+        if (!user) return;
+
+        if (!confirm(`⚠️ ATTENTION ⚠️\n\nVoulez-vous vraiment supprimer l'utilisateur "${user.username}" ?\n\nCette action est IRRÉVERSIBLE et supprimera :\n- Le compte utilisateur\n- Toutes ses sessions\n- Son historique de connexion\n\nTapez "SUPPRIMER" pour confirmer:`)) {
+            return;
+        }
+
+        showNotification('Suppression de l\'utilisateur...', 'info');
+
+        const response = await apiRequest(`${API_URL}/users/${userId}`, {
+            method: 'DELETE'
+        });
+
+        if (response && response.ok) {
+            showNotification('Utilisateur supprimé avec succès', 'success');
+            await loadUsersList();
+            await loadUserStats();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de la suppression');
+        }
+
+    } catch (error) {
+        console.error('Erreur suppression utilisateur:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
+async function refreshUserList() {
+    showNotification('Actualisation de la liste des utilisateurs...', 'info');
+    await Promise.all([
+        loadUsersList(),
+        loadUserStats()
+    ]);
+}
+
+async function exportUsers() {
+    try {
+        showNotification('Export des utilisateurs...', 'info');
+        
+        const response = await apiRequest(`${API_URL}/users/export/csv`);
+        if (response && response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `efc-backup-users-${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showNotification('Export terminé avec succès', 'success');
+        } else {
+            throw new Error('Erreur lors de l\'export');
+        }
+    } catch (error) {
+        console.error('Erreur export utilisateurs:', error);
+        showNotification(`Erreur export: ${error.message}`, 'error');
+    }
+}
+
+// Fonctions pour le changement de mot de passe utilisateur
+function openPasswordModal() {
+    try {
+        console.log('Tentative d\'ouverture du modal mot de passe');
+        
+        const modal = document.getElementById('password-modal');
+        console.log('Modal trouvé:', modal);
+        
+        if (modal) {
+            modal.style.display = 'block';
+            console.log('Modal affiché');
+            
+            // Réinitialiser le formulaire
+            const form = document.getElementById('password-form');
+            if (form) {
+                form.reset();
+                console.log('Formulaire réinitialisé');
+            }
+            
+            // Focus sur le premier champ
+            const currentPasswordField = document.getElementById('my-current-password');
+            if (currentPasswordField) {
+                setTimeout(() => {
+                    currentPasswordField.focus();
+                    console.log('Focus mis sur le champ mot de passe actuel');
+                }, 100);
+            }
+        } else {
+            console.error('Modal password-modal non trouvé');
+            showNotification('Erreur: Modal non trouvé', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur dans openPasswordModal:', error);
+        showNotification('Erreur lors de l\'ouverture du modal: ' + error.message, 'error');
+    }
+}
+
+function closePasswordModal() {
+    const modal = document.getElementById('password-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function changeUserPassword() {
+    try {
+        const currentPasswordField = document.getElementById('my-current-password');
+        const newPasswordField = document.getElementById('my-new-password');
+        const confirmPasswordField = document.getElementById('my-confirm-password');
+
+        // Vérifier que les éléments existent
+        if (!currentPasswordField || !newPasswordField || !confirmPasswordField) {
+            showNotification('Erreur: Impossible de trouver les champs du formulaire', 'error');
+            return;
+        }
+
+        const currentPassword = currentPasswordField.value.trim();
+        const newPassword = newPasswordField.value.trim();
+        const confirmPassword = confirmPasswordField.value.trim();
+
+        // Debug pour diagnostiquer le problème
+        console.log('Valeurs des champs:', {
+            currentPassword: `"${currentPassword}"`,
+            newPassword: `"${newPassword}"`,
+            confirmPassword: `"${confirmPassword}"`
+        });
+
+        // Validation côté client
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            showNotification(`Champs manquants: Current: ${!currentPassword ? 'vide' : 'ok'}, New: ${!newPassword ? 'vide' : 'ok'}, Confirm: ${!confirmPassword ? 'vide' : 'ok'}`, 'error');
+            return;
+        }
+
+        if (newPassword.length < 8) {
+            showNotification('Le nouveau mot de passe doit faire au moins 8 caractères', 'error');
+            return;
+        }
+        
+        if (newPassword.length > 128) {
+            showNotification('Le nouveau mot de passe est trop long (maximum 128 caractères)', 'error');
+            return;
+        }
+        
+        // Validation de la complexité
+        const hasLowercase = /[a-z]/.test(newPassword);
+        const hasUppercase = /[A-Z]/.test(newPassword);
+        const hasNumber = /\d/.test(newPassword);
+        const hasSpecial = /[@$!%*?&]/.test(newPassword);
+        
+        if (!hasLowercase || !hasUppercase || !hasNumber || !hasSpecial) {
+            showNotification('Le mot de passe doit contenir au moins une minuscule, une majuscule, un chiffre et un caractère spécial (@$!%*?&)', 'error');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            showNotification('Les nouveaux mots de passe ne correspondent pas', 'error');
+            return;
+        }
+
+        showNotification('Changement du mot de passe...', 'info');
+
+        const response = await apiRequest(`${API_URL}/users/me/password`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                currentPassword,
+                newPassword
+            })
+        });
+
+        if (response && response.ok) {
+            const data = await response.json();
+            showNotification('Mot de passe changé avec succès', 'success');
+            closePasswordModal();
+            
+            // Optionnel: forcer une reconnexion si indiqué par le serveur
+            if (data.forceLogout) {
+                showNotification('Reconnexion requise avec le nouveau mot de passe', 'info');
+                setTimeout(() => {
+                    localStorage.removeItem('token');
+                    window.location.reload();
+                }, 2000);
+            }
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors du changement de mot de passe');
+        }
+
+    } catch (error) {
+        console.error('Erreur changement mot de passe:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
+// Fonction pour afficher l'interface de changement de mot de passe
+function showPasswordChangeInterface() {
+    const passwordSection = `
+        <div class="password-change-section">
+            <div class="section-header">
+                <h3>Sécurité du compte</h3>
+                <button onclick="openPasswordModal()" class="btn btn-primary">
+                    Changer le mot de passe
+                </button>
+            </div>
+            <div class="password-info">
+                <p>Pour votre sécurité, changez régulièrement votre mot de passe.</p>
+                <ul>
+                    <li>Utilisez au moins 8 caractères</li>
+                    <li>Mélangez lettres, chiffres et symboles</li>
+                    <li>Évitez les mots courants</li>
+                </ul>
+            </div>
+        </div>
+    `;
+    
+    return passwordSection;
 }

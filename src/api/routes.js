@@ -82,16 +82,16 @@ router.get('/dashboard', AuthMiddleware.authenticateToken, async (req, res) => {
 });
 
 // Routes Clients (avec restrictions d'accès)
-router.get('/clients', AuthMiddleware.requireClientAccess, async (req, res) => {
+router.get('/clients', AuthMiddleware.filterClientData, async (req, res) => {
     try {
         let clients;
         
-        // Admin peut voir tous les clients, client ne peut voir que le sien
-        if (req.user.role === 'admin') {
+        // Utiliser les permissions pour filtrer les clients
+        if (req.dataFilter.canViewAll) {
             clients = await getClients();
         } else {
-            // Client ne peut voir que son propre client
-            clients = await getClients({ names: [req.user.clientName] });
+            // Filtrer par clients autorisés
+            clients = await getClients({ names: req.dataFilter.allowedClients });
         }
         
         res.json(clients);
@@ -181,13 +181,16 @@ router.delete('/clients/:id', AuthMiddleware.requireAdmin, async (req, res) => {
 });
 
 // Routes Backups
-router.get('/backups', AuthMiddleware.requireClientAccess, async (req, res) => {
+router.get('/backups', AuthMiddleware.filterClientData, async (req, res) => {
     try {
         const filters = {};
         
-        // Client ne peut voir que ses propres backups
-        if (req.user.role === 'client') {
-            filters.client_name = req.user.clientName;
+        // Appliquer les restrictions de permissions
+        if (!req.dataFilter.canViewAll && req.dataFilter.allowedClients.length > 0) {
+            // Pour les clients avec restrictions, ne montrer que leurs backups
+            if (req.dataFilter.allowedClients.length === 1) {
+                filters.client_name = req.dataFilter.allowedClients[0];
+            }
         } else if (req.query.client_name) {
             filters.client_name = req.query.client_name;
         }
@@ -197,7 +200,15 @@ router.get('/backups', AuthMiddleware.requireClientAccess, async (req, res) => {
         if (req.query.limit) filters.limit = parseInt(req.query.limit);
         if (req.query.since) filters.since = req.query.since;
 
-        const backups = await getBackups(filters);
+        let backups = await getBackups(filters);
+        
+        // Filtrage supplémentaire pour les clients avec plusieurs clients autorisés
+        if (!req.dataFilter.canViewAll) {
+            backups = backups.filter(backup => 
+                req.dataFilter.allowedClients.includes(backup.client_name)
+            );
+        }
+        
         res.json(backups);
     } catch (error) {
         logger.error('Erreur API get backups:', error);

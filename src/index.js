@@ -20,12 +20,16 @@ const authRoutes = require('./api/auth');
 const backupVerifyRoutes = require('./api/backup-verify');
 const messagingRoutes = require('./api/messaging');
 const sslRoutes = require('./api/ssl');
+const usersRoutes = require('./api/users');
 const { notificationService } = require('./utils/notification');
 const { messagingService } = require('./utils/messaging');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// Configuration du proxy pour Apache
+app.set('trust proxy', 1);
 
 // Middleware de sécurité et performance
 app.use(helmet({
@@ -105,6 +109,9 @@ app.use('/api/messaging', messagingRoutes);
 
 // Routes SSL et certificats
 app.use('/api/ssl', sslRoutes);
+
+// Routes de gestion des utilisateurs
+app.use('/api/users', usersRoutes);
 
 // Route principale avec fallback pour SPA
 app.get('*', (req, res) => {

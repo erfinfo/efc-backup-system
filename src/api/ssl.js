@@ -1,5 +1,5 @@
 const express = require('express');
-const { sslManager } = require('../utils/ssl-manager');
+const { apacheSSLManager } = require('../utils/ssl-manager-apache');
 const { logger } = require('../utils/logger');
 const AuthMiddleware = require('../middleware/auth');
 
@@ -8,7 +8,7 @@ const router = express.Router();
 // Route pour obtenir le statut SSL actuel
 router.get('/status', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
-        const status = await sslManager.getSSLStatus();
+        const status = await apacheSSLManager.getSSLStatus();
         
         res.json({
             domain: 'backup.efcinfo.com',
@@ -30,7 +30,7 @@ router.post('/setup', AuthMiddleware.requireAdmin, async (req, res) => {
         // Cette opération peut prendre plusieurs minutes
         res.setTimeout(300000); // 5 minutes timeout
 
-        const result = await sslManager.setupSSL();
+        const result = await apacheSSLManager.setupSSL();
 
         logger.info('Configuration SSL terminée avec succès', { result });
 
@@ -57,7 +57,7 @@ router.post('/renew', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         logger.info(`Renouvellement SSL initié par ${req.user.username}`);
 
-        const result = await sslManager.renewCertificate();
+        const result = await apacheSSLManager.renewCertificate();
 
         logger.info('Renouvellement SSL terminé', { result });
 
@@ -81,7 +81,7 @@ router.post('/renew', AuthMiddleware.requireAdmin, async (req, res) => {
 // Route pour tester la configuration SSL
 router.post('/test', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
-        const testResult = await sslManager.testSSLConfiguration();
+        const testResult = await apacheSSLManager.testSSLConfiguration();
 
         res.json({
             success: true,
@@ -108,7 +108,7 @@ router.get('/prerequisites', AuthMiddleware.requireAdmin, async (req, res) => {
             domain: 'backup.efcinfo.com',
             checks: {
                 dns: false,
-                nginx: false,
+                apache: false,
                 certbot: false,
                 ports: false
             },
@@ -116,28 +116,28 @@ router.get('/prerequisites', AuthMiddleware.requireAdmin, async (req, res) => {
         };
 
         try {
-            await sslManager.checkDNSConfiguration();
+            await apacheSSLManager.checkDNSConfiguration();
             prerequisites.checks.dns = true;
         } catch (error) {
             prerequisites.recommendations.push('Configurer le DNS pour pointer backup.efcinfo.com vers ce serveur');
         }
 
         try {
-            await sslManager.checkNginxInstallation();
-            prerequisites.checks.nginx = true;
+            await apacheSSLManager.checkApacheInstallation();
+            prerequisites.checks.apache = true;
         } catch (error) {
-            prerequisites.recommendations.push('Installer Nginx');
+            prerequisites.recommendations.push('Installer Apache2');
         }
 
         try {
-            await sslManager.checkCertbotInstallation();
+            await apacheSSLManager.checkCertbotInstallation();
             prerequisites.checks.certbot = true;
         } catch (error) {
-            prerequisites.recommendations.push('Installer Certbot');
+            prerequisites.recommendations.push('Installer Certbot avec plugin Apache');
         }
 
         try {
-            await sslManager.checkPorts();
+            await apacheSSLManager.checkPorts();
             prerequisites.checks.ports = true;
         } catch (error) {
             prerequisites.recommendations.push('Vérifier que les ports 80 et 443 sont disponibles');
@@ -165,34 +165,50 @@ router.get('/logs', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const { lines = 50 } = req.query;
 
-        // Lecture des logs Nginx et Certbot
+        // Lecture des logs Apache et Certbot
         const logs = {
-            nginx: {
+            apache: {
                 access: [],
-                error: []
+                error: [],
+                sslAccess: [],
+                sslError: []
             },
             certbot: [],
             letsencrypt: []
         };
 
         try {
-            // Logs Nginx
-            const nginxAccess = await sslManager.runCommand('tail', ['-n', lines, '/var/log/nginx/efc-backup-access.log']);
-            logs.nginx.access = nginxAccess.split('\n').filter(line => line.trim());
+            // Logs Apache
+            const apacheAccess = await apacheSSLManager.runCommand('tail', ['-n', lines, '/var/log/apache2/efc-backup-access.log']);
+            logs.apache.access = apacheAccess.split('\n').filter(line => line.trim());
         } catch (error) {
-            logs.nginx.access = ['Fichier de log non trouvé'];
+            logs.apache.access = ['Fichier de log non trouvé'];
         }
 
         try {
-            const nginxError = await sslManager.runCommand('tail', ['-n', lines, '/var/log/nginx/efc-backup-error.log']);
-            logs.nginx.error = nginxError.split('\n').filter(line => line.trim());
+            const apacheError = await apacheSSLManager.runCommand('tail', ['-n', lines, '/var/log/apache2/efc-backup-error.log']);
+            logs.apache.error = apacheError.split('\n').filter(line => line.trim());
         } catch (error) {
-            logs.nginx.error = ['Fichier de log non trouvé'];
+            logs.apache.error = ['Fichier de log non trouvé'];
+        }
+
+        try {
+            const apacheSSLAccess = await apacheSSLManager.runCommand('tail', ['-n', lines, '/var/log/apache2/efc-backup-ssl-access.log']);
+            logs.apache.sslAccess = apacheSSLAccess.split('\n').filter(line => line.trim());
+        } catch (error) {
+            logs.apache.sslAccess = ['Fichier de log non trouvé'];
+        }
+
+        try {
+            const apacheSSLError = await apacheSSLManager.runCommand('tail', ['-n', lines, '/var/log/apache2/efc-backup-ssl-error.log']);
+            logs.apache.sslError = apacheSSLError.split('\n').filter(line => line.trim());
+        } catch (error) {
+            logs.apache.sslError = ['Fichier de log non trouvé'];
         }
 
         try {
             // Logs Certbot
-            const certbotLogs = await sslManager.runCommand('tail', ['-n', lines, '/var/log/letsencrypt/letsencrypt.log']);
+            const certbotLogs = await apacheSSLManager.runCommand('tail', ['-n', lines, '/var/log/letsencrypt/letsencrypt.log']);
             logs.certbot = certbotLogs.split('\n').filter(line => line.trim());
         } catch (error) {
             logs.certbot = ['Fichier de log non trouvé'];
@@ -209,33 +225,52 @@ router.get('/logs', AuthMiddleware.requireAdmin, async (req, res) => {
     }
 });
 
-// Route pour obtenir la configuration Nginx actuelle
-router.get('/nginx-config', AuthMiddleware.requireAdmin, async (req, res) => {
+// Route pour obtenir la configuration Apache actuelle
+router.get('/apache-config', AuthMiddleware.requireAdmin, async (req, res) => {
     try {
         const fs = require('fs').promises;
-        const configPath = '/etc/nginx/sites-available/efc-backup';
+        const configPath = '/etc/apache2/sites-available/efc-backup.conf';
+        const sslConfigPath = '/etc/apache2/sites-available/efc-backup-ssl.conf';
+
+        const configs = {};
 
         try {
             const config = await fs.readFile(configPath, 'utf8');
-            
-            res.json({
+            configs.http = {
                 exists: true,
                 path: configPath,
-                config,
-                timestamp: new Date().toISOString()
-            });
-
+                config
+            };
         } catch (error) {
-            res.json({
+            configs.http = {
                 exists: false,
                 path: configPath,
-                message: 'Configuration Nginx non trouvée',
-                timestamp: new Date().toISOString()
-            });
+                message: 'Configuration Apache HTTP non trouvée'
+            };
         }
 
+        try {
+            const sslConfig = await fs.readFile(sslConfigPath, 'utf8');
+            configs.ssl = {
+                exists: true,
+                path: sslConfigPath,
+                config: sslConfig
+            };
+        } catch (error) {
+            configs.ssl = {
+                exists: false,
+                path: sslConfigPath,
+                message: 'Configuration Apache SSL non trouvée'
+            };
+        }
+            
+        res.json({
+            configs,
+            timestamp: new Date().toISOString()
+        });
+
     } catch (error) {
-        logger.error('Erreur lors de la lecture de la config Nginx:', error);
+        logger.error('Erreur lors de la lecture de la config Apache:', error);
         res.status(500).json({ error: 'Erreur interne du serveur' });
     }
 });
@@ -246,7 +281,7 @@ router.get('/certificate-info', AuthMiddleware.requireAdmin, async (req, res) =>
         const certPath = '/etc/letsencrypt/live/backup.efcinfo.com/fullchain.pem';
         
         try {
-            const certInfo = await sslManager.runCommand('openssl', [
+            const certInfo = await apacheSSLManager.runCommand('openssl', [
                 'x509', '-in', certPath,
                 '-noout', '-text'
             ]);

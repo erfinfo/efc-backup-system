@@ -25,7 +25,9 @@
                 <li><a href="#schedule">Planification</a></li>
                 <li><a href="#logs">Logs</a></li>
                 <li><a href="#settings">Paramètres</a></li>
+                <li><a href="#users">Utilisateurs</a></li>
                 <li><a href="#config">Configuration</a></li>
+                <li><a href="#ssl">SSL/HTTPS</a></li>
                 <li><a href="#network">Trafic Réseau</a></li>
                 <li><a href="#system">Système</a></li>
             </ul>
@@ -174,6 +176,225 @@
                         </div>
                         <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
                     </div>
+                </section>
+                
+                <section id="users-section" class="content-section">
+                    <h2>👥 Gestion des Utilisateurs</h2>
+                    
+                    <!-- Actions principales -->
+                    <div class="user-management-header">
+                        <div class="section-stats">
+                            <div class="stat-card">
+                                <h3 id="total-users">-</h3>
+                                <p>Utilisateurs total</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3 id="admin-users">-</h3>
+                                <p>Administrateurs</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3 id="client-users">-</h3>
+                                <p>Utilisateurs client</p>
+                            </div>
+                            <div class="stat-card">
+                                <h3 id="active-sessions">-</h3>
+                                <p>Sessions actives</p>
+                            </div>
+                        </div>
+                        
+                        <div class="user-actions">
+                            <button class="btn btn-primary" onclick="showAddUserModal()">
+                                ➕ Ajouter Utilisateur
+                            </button>
+                            <button class="btn btn-secondary" onclick="refreshUserList()">
+                                🔄 Actualiser
+                            </button>
+                            <button class="btn btn-warning" onclick="exportUsers()">
+                                📤 Exporter
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtres et recherche -->
+                    <div class="user-filters">
+                        <div class="filter-group">
+                            <input type="text" id="user-search" class="form-input" placeholder="🔍 Rechercher par nom, email..." onkeyup="filterUsers()">
+                        </div>
+                        <div class="filter-group">
+                            <select id="role-filter" class="form-input" onchange="filterUsers()">
+                                <option value="">Tous les rôles</option>
+                                <option value="admin">👑 Administrateur</option>
+                                <option value="client">👤 Client</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <select id="status-filter" class="form-input" onchange="filterUsers()">
+                                <option value="">Tous les statuts</option>
+                                <option value="active">✅ Actif</option>
+                                <option value="inactive">❌ Inactif</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Liste des utilisateurs -->
+                    <div class="users-container">
+                        <div class="users-table-container">
+                            <table class="users-table">
+                                <thead>
+                                    <tr>
+                                        <th onclick="sortUsers('username')">👤 Nom d'utilisateur</th>
+                                        <th onclick="sortUsers('email')">📧 Email</th>
+                                        <th onclick="sortUsers('role')">🔐 Rôle</th>
+                                        <th onclick="sortUsers('client_name')">🏢 Client associé</th>
+                                        <th onclick="sortUsers('last_login')">🕐 Dernière connexion</th>
+                                        <th onclick="sortUsers('created_at')">📅 Créé le</th>
+                                        <th class="actions-column">⚙️ Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="users-table-body">
+                                    <tr>
+                                        <td colspan="7" class="loading-cell">Chargement des utilisateurs...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Modal d'ajout/modification d'utilisateur -->
+                    <div id="user-modal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3 id="user-modal-title">➕ Ajouter un utilisateur</h3>
+                                <button class="close-btn" onclick="closeUserModal()">&times;</button>
+                            </div>
+                            <form id="user-form" onsubmit="saveUser(event)">
+                                <div class="modal-body">
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="user-username">👤 Nom d'utilisateur *</label>
+                                            <input type="text" id="user-username" name="username" class="form-input" required>
+                                            <small>Unique, 3-50 caractères alphanumériques</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="user-email">📧 Adresse email *</label>
+                                            <input type="email" id="user-email" name="email" class="form-input" required>
+                                            <small>Email valide pour les notifications</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="user-role">🔐 Rôle *</label>
+                                            <select id="user-role" name="role" class="form-input" required onchange="toggleClientSelection()">
+                                                <option value="">Sélectionner un rôle</option>
+                                                <option value="admin">👑 Administrateur</option>
+                                                <option value="client">👤 Client</option>
+                                            </select>
+                                            <small>Admin = accès complet, Client = accès restreint</small>
+                                        </div>
+                                        <div class="form-group" id="client-selection" style="display: none;">
+                                            <label for="user-client">🏢 Client associé</label>
+                                            <select id="user-client" name="client_name" class="form-input">
+                                                <option value="">Aucun client associé</option>
+                                            </select>
+                                            <small>Client dont l'utilisateur peut voir les backups</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-row" id="password-section">
+                                        <div class="form-group">
+                                            <label for="user-password">🔑 Mot de passe *</label>
+                                            <input type="password" id="user-password" name="password" class="form-input" required>
+                                            <small>Minimum 8 caractères, majuscule, minuscule, chiffre</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="user-password-confirm">🔑 Confirmer mot de passe *</label>
+                                            <input type="password" id="user-password-confirm" name="passwordConfirm" class="form-input" required>
+                                            <small>Doit correspondre au mot de passe</small>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="user-active" name="active" checked>
+                                                ✅ Compte actif
+                                            </label>
+                                            <small>L'utilisateur peut se connecter</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="user-force-password-change" name="forcePasswordChange">
+                                                🔄 Forcer changement MDP à la prochaine connexion
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Permissions spéciales (pour futurs développements) -->
+                                    <div class="form-section">
+                                        <h4>🛡️ Permissions spéciales</h4>
+                                        <div class="permissions-grid">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="can_view_logs">
+                                                📋 Voir les logs
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="can_download_backups">
+                                                💾 Télécharger les backups
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="can_start_backups">
+                                                ▶️ Lancer des backups
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" name="can_manage_schedule">
+                                                ⏰ Gérer la planification
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Annuler</button>
+                                    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Modal de changement de mot de passe -->
+                    <div id="password-change-modal" class="modal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3>🔑 Changer le mot de passe</h3>
+                                <button class="close-btn" onclick="closePasswordModal()">&times;</button>
+                            </div>
+                            <form id="password-change-form" onsubmit="changeUserPassword(event)">
+                                <div class="modal-body">
+                                    <div class="form-group">
+                                        <label for="new-password">🔑 Nouveau mot de passe</label>
+                                        <input type="password" id="new-password" name="newPassword" class="form-input" required>
+                                        <small>Minimum 8 caractères, majuscule, minuscule, chiffre</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="new-password-confirm">🔑 Confirmer nouveau mot de passe</label>
+                                        <input type="password" id="new-password-confirm" name="newPasswordConfirm" class="form-input" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" id="force-logout" name="forceLogout" checked>
+                                            🚪 Forcer la déconnexion de toutes les sessions
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Annuler</button>
+                                    <button type="submit" class="btn btn-warning">🔑 Changer le mot de passe</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
                 </section>
                 
                 <section id="config-section" class="content-section">
@@ -389,6 +610,159 @@
                             </div>
                             <div class="config-warning">
                                 <p><strong>⚠️ Attention :</strong> Certaines modifications nécessitent un redémarrage du serveur pour prendre effet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <section id="ssl-section" class="content-section">
+                    <h2>🔒 Configuration SSL/HTTPS</h2>
+                    
+                    <!-- Statut SSL actuel -->
+                    <div class="ssl-status-container">
+                        <div class="ssl-status-card">
+                            <h3>📋 Statut SSL Actuel</h3>
+                            <div class="ssl-status-grid" id="ssl-status-grid">
+                                <div class="status-item">
+                                    <span class="status-label">Domaine:</span>
+                                    <span class="status-value">backup.efcinfo.com</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Certificat:</span>
+                                    <span class="status-value" id="ssl-cert-status">❌ Non configuré</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Apache SSL:</span>
+                                    <span class="status-value" id="ssl-apache-status">❌ Non configuré</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Renouvellement auto:</span>
+                                    <span class="status-value" id="ssl-renewal-status">❌ Inactif</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Expiration:</span>
+                                    <span class="status-value" id="ssl-expiry-status">-</span>
+                                </div>
+                                <div class="status-item">
+                                    <span class="status-label">Dernière vérif.:</span>
+                                    <span class="status-value" id="ssl-last-check">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Prérequis SSL -->
+                        <div class="ssl-prerequisites-card">
+                            <h3>✅ Prérequis Système</h3>
+                            <div class="prerequisites-grid" id="ssl-prerequisites-grid">
+                                <div class="prerequisite-item">
+                                    <span class="check-icon">⏳</span>
+                                    <span>Vérification DNS...</span>
+                                </div>
+                                <div class="prerequisite-item">
+                                    <span class="check-icon">⏳</span>
+                                    <span>Apache2 installé...</span>
+                                </div>
+                                <div class="prerequisite-item">
+                                    <span class="check-icon">⏳</span>
+                                    <span>Certbot disponible...</span>
+                                </div>
+                                <div class="prerequisite-item">
+                                    <span class="check-icon">⏳</span>
+                                    <span>Ports 80/443...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions SSL -->
+                    <div class="ssl-actions-container">
+                        <div class="ssl-actions-card">
+                            <h3>🚀 Actions SSL</h3>
+                            <div class="ssl-action-buttons">
+                                <button class="btn btn-primary" onclick="checkSSLStatus()">
+                                    🔍 Vérifier Statut
+                                </button>
+                                <button class="btn btn-success" id="ssl-setup-btn" onclick="setupSSL()">
+                                    🔒 Configurer SSL
+                                </button>
+                                <button class="btn btn-warning" onclick="renewSSLCertificate()" disabled>
+                                    🔄 Renouveler Certificat
+                                </button>
+                                <button class="btn btn-secondary" onclick="testSSLConfiguration()">
+                                    🧪 Tester SSL
+                                </button>
+                            </div>
+                            
+                            <div class="ssl-warning" id="ssl-warning" style="display: none;">
+                                <p><strong>⚠️ Important :</strong> La configuration SSL peut prendre 5-10 minutes et nécessite que le domaine backup.efcinfo.com pointe vers ce serveur.</p>
+                            </div>
+                        </div>
+
+                        <!-- Informations certificat -->
+                        <div class="ssl-cert-info-card" id="ssl-cert-info" style="display: none;">
+                            <h3>📜 Informations Certificat</h3>
+                            <div class="cert-details">
+                                <div class="cert-item">
+                                    <strong>Émis pour:</strong>
+                                    <span id="cert-subject">-</span>
+                                </div>
+                                <div class="cert-item">
+                                    <strong>Émis par:</strong>
+                                    <span id="cert-issuer">-</span>
+                                </div>
+                                <div class="cert-item">
+                                    <strong>Valide du:</strong>
+                                    <span id="cert-valid-from">-</span>
+                                </div>
+                                <div class="cert-item">
+                                    <strong>Valide jusqu'au:</strong>
+                                    <span id="cert-valid-to">-</span>
+                                </div>
+                                <div class="cert-item">
+                                    <strong>Numéro de série:</strong>
+                                    <span id="cert-serial">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Configuration Apache -->
+                    <div class="ssl-config-container">
+                        <div class="config-tabs">
+                            <button class="tab-btn active" onclick="showSSLTab('logs')">📋 Logs</button>
+                            <button class="tab-btn" onclick="showSSLTab('config')">⚙️ Configuration Apache</button>
+                        </div>
+                        
+                        <div class="tab-content">
+                            <div id="ssl-logs-tab" class="tab-pane active">
+                                <h4>Logs SSL/Apache</h4>
+                                <div class="logs-selector">
+                                    <select id="ssl-log-type" class="form-input">
+                                        <option value="access">Apache Access</option>
+                                        <option value="error">Apache Error</option>
+                                        <option value="ssl-access">Apache SSL Access</option>
+                                        <option value="ssl-error">Apache SSL Error</option>
+                                        <option value="certbot">Certbot</option>
+                                    </select>
+                                    <button class="btn btn-secondary" onclick="refreshSSLLogs()">🔄 Actualiser</button>
+                                </div>
+                                <div class="logs-container">
+                                    <pre id="ssl-logs-content">Cliquez sur "Actualiser" pour charger les logs...</pre>
+                                </div>
+                            </div>
+                            
+                            <div id="ssl-config-tab" class="tab-pane">
+                                <h4>Configuration Apache</h4>
+                                <div class="config-selector">
+                                    <select id="ssl-config-type" class="form-input">
+                                        <option value="http">Configuration HTTP</option>
+                                        <option value="ssl">Configuration SSL</option>
+                                    </select>
+                                    <button class="btn btn-secondary" onclick="refreshSSLConfig()">🔄 Actualiser</button>
+                                </div>
+                                <div class="config-container">
+                                    <pre id="ssl-config-content">Sélectionnez un type de configuration...</pre>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -712,6 +1086,49 @@
                 <div class="modal-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Annuler</button>
                     <button type="submit" class="btn btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Changement de mot de passe -->
+    <div id="password-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Changer le mot de passe</h3>
+                <button class="close-btn" onclick="closePasswordModal()">&times;</button>
+            </div>
+            <form id="password-form" onsubmit="event.preventDefault(); changeUserPassword();">
+                <div class="form-group">
+                    <label>Mot de passe actuel</label>
+                    <input type="password" id="my-current-password" required class="form-input" 
+                           placeholder="Entrez votre mot de passe actuel">
+                </div>
+                <div class="form-group">
+                    <label>Nouveau mot de passe</label>
+                    <input type="password" id="my-new-password" required class="form-input" 
+                           placeholder="Au moins 8 caractères" minlength="8">
+                </div>
+                <div class="form-group">
+                    <label>Confirmer le nouveau mot de passe</label>
+                    <input type="password" id="my-confirm-password" required class="form-input" 
+                           placeholder="Ressaisissez le nouveau mot de passe">
+                </div>
+                <div class="password-requirements">
+                    <p><strong>Exigences pour le mot de passe :</strong></p>
+                    <ul>
+                        <li>Au moins 8 caractères (maximum 128)</li>
+                        <li>Au moins une lettre minuscule (a-z)</li>
+                        <li>Au moins une lettre majuscule (A-Z)</li>
+                        <li>Au moins un chiffre (0-9)</li>
+                        <li>Au moins un caractère spécial (@$!%*?&)</li>
+                        <li>Évitez les mots courants et informations personnelles</li>
+                        <li>Ne peut pas contenir votre nom d'utilisateur ou email</li>
+                    </ul>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
                 </div>
             </form>
         </div>

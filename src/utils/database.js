@@ -124,18 +124,33 @@ class Database {
             `CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'client',
                 client_name TEXT,
-                email TEXT,
-                phone TEXT,
-                last_login DATETIME,
+                active BOOLEAN DEFAULT 1,
+                permissions TEXT DEFAULT '{}',
                 failed_login_attempts INTEGER DEFAULT 0,
                 locked_until DATETIME,
-                active BOOLEAN DEFAULT 1,
+                last_login DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (client_name) REFERENCES clients(name)
+            )`,
+            
+            // Table des permissions utilisateurs détaillées
+            `CREATE TABLE IF NOT EXISTS user_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                permission_type TEXT NOT NULL,
+                resource TEXT,
+                resource_id TEXT,
+                granted BOOLEAN DEFAULT 1,
+                granted_by INTEGER,
+                granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expires_at DATETIME,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (granted_by) REFERENCES users(id)
             )`
         ];
 
@@ -169,6 +184,26 @@ class Database {
             // La colonne existe déjà, ignorer l'erreur
             if (!error.message.includes('duplicate column name')) {
                 console.log('Migration os_type:', error.message);
+            }
+        }
+
+        // Migration pour ajouter permissions aux utilisateurs existants
+        try {
+            await this.run(`ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '{}'`);
+        } catch (error) {
+            // La colonne existe déjà, ignorer l'erreur
+            if (!error.message.includes('duplicate column name')) {
+                console.log('Migration permissions:', error.message);
+            }
+        }
+
+        // Migration pour ajouter email aux utilisateurs existants (si elle n'existe pas)
+        try {
+            await this.run(`ALTER TABLE users ADD COLUMN email TEXT`);
+        } catch (error) {
+            // La colonne existe déjà, ignorer l'erreur
+            if (!error.message.includes('duplicate column name')) {
+                console.log('Migration email:', error.message);
             }
         }
 
@@ -597,25 +632,32 @@ async function getNetworkStatsByClient(clientName, limit = 10) {
 }
 
 // Fonctions pour les utilisateurs
-const addUser = async (userData) => {
-    const { username, password_hash, role = 'client', client_name, email, phone } = userData;
-    
-    const result = await db.run(
-        `INSERT INTO users (username, password_hash, role, client_name, email, phone) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [username, password_hash, role, client_name, email, phone]
-    );
-    
-    await logActivity('USER_CREATED', client_name, null, null, { username, role });
-    return result;
+const getAllUsers = async () => {
+    return await db.all(`
+        SELECT id, username, email, role, client_name, active, permissions, 
+               last_login, failed_login_attempts, locked_until, created_at, updated_at
+        FROM users 
+        ORDER BY created_at DESC
+    `);
 };
 
-const getUserByUsername = async (username) => {
-    return await db.get('SELECT * FROM users WHERE username = ? AND active = 1', [username]);
+const createUser = async (userData) => {
+    const { username, email, password, role, client_name, active, permissions, created_at } = userData;
+    
+    const result = await db.run(`
+        INSERT INTO users (username, email, password_hash, role, client_name, active, permissions, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [username, email, password, role, client_name, active, permissions, created_at]);
+    
+    // Récupérer l'utilisateur créé
+    const newUser = await db.get('SELECT * FROM users WHERE id = ?', [result.id]);
+    
+    await logActivity('USER_CREATED', client_name, null, null, { username, role });
+    return newUser;
 };
 
 const getUserById = async (id) => {
-    return await db.get('SELECT * FROM users WHERE id = ? AND active = 1', [id]);
+    return await db.get('SELECT * FROM users WHERE (id = ? OR username = ?)', [id, id]);
 };
 
 const updateUser = async (id, userData) => {
@@ -623,13 +665,16 @@ const updateUser = async (id, userData) => {
     const params = [];
     
     for (const [key, value] of Object.entries(userData)) {
-        if (['username', 'password_hash', 'role', 'client_name', 'email', 'phone', 'active'].includes(key)) {
+        if (['username', 'email', 'role', 'client_name', 'active', 'permissions', 'updated_at'].includes(key)) {
             fields.push(`${key} = ?`);
             params.push(value);
         }
     }
     
-    fields.push('updated_at = CURRENT_TIMESTAMP');
+    if (fields.length === 0) {
+        throw new Error('Aucune donnée à mettre à jour');
+    }
+    
     params.push(id);
     
     const result = await db.run(
@@ -637,10 +682,74 @@ const updateUser = async (id, userData) => {
         params
     );
     
-    const user = await getUserById(id);
-    await logActivity('USER_UPDATED', user?.client_name, null, null, { userId: id, username: user?.username });
+    // Récupérer l'utilisateur mis à jour
+    const updatedUser = await getUserById(id);
+    if (updatedUser) {
+        await logActivity('USER_UPDATED', updatedUser.client_name, null, null, { userId: id, username: updatedUser.username });
+    }
+    
+    return updatedUser;
+};
+
+const updateUserPassword = async (id, hashedPassword, forceLogout = true) => {
+    const fields = ['password_hash = ?', 'updated_at = ?'];
+    const params = [hashedPassword, new Date().toISOString()];
+    
+    if (forceLogout) {
+        fields.push('failed_login_attempts = 0');
+        fields.push('locked_until = NULL');
+    }
+    
+    params.push(id);
+    
+    return await db.run(
+        `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+        params
+    );
+};
+
+const toggleUserStatus = async (id, newStatus) => {
+    const result = await db.run(
+        'UPDATE users SET active = ?, updated_at = ? WHERE id = ?',
+        [newStatus ? 1 : 0, new Date().toISOString(), id]
+    );
     
     return result;
+};
+
+const deleteUser = async (id) => {
+    const user = await getUserById(id);
+    
+    if (!user) {
+        throw new Error('Utilisateur non trouvé');
+    }
+    
+    const result = await db.run('DELETE FROM users WHERE id = ?', [id]);
+    
+    await logActivity('USER_DELETED', user.client_name, null, null, { userId: id, username: user.username });
+    
+    return result;
+};
+
+const getUserStats = async () => {
+    const totalUsers = await db.get('SELECT COUNT(*) as count FROM users');
+    const activeUsers = await db.get('SELECT COUNT(*) as count FROM users WHERE active = 1');
+    const adminUsers = await db.get('SELECT COUNT(*) as count FROM users WHERE role = "admin"');
+    const clientUsers = await db.get('SELECT COUNT(*) as count FROM users WHERE role = "client"');
+    const recentUsers = await db.get('SELECT COUNT(*) as count FROM users WHERE created_at >= datetime("now", "-7 days")');
+    
+    return {
+        total: totalUsers.count,
+        active: activeUsers.count,
+        inactive: totalUsers.count - activeUsers.count,
+        admins: adminUsers.count,
+        clients: clientUsers.count,
+        recent: recentUsers.count
+    };
+};
+
+const getUserByUsername = async (username) => {
+    return await db.get('SELECT * FROM users WHERE username = ?', [username]);
 };
 
 const updateUserLoginInfo = async (id, loginData = {}) => {
@@ -654,8 +763,7 @@ const updateUserLoginInfo = async (id, loginData = {}) => {
     } else {
         fields.push('failed_login_attempts = failed_login_attempts + 1');
         
-        // Lock account after 5 failed attempts for 15 minutes
-        const lockDuration = 15 * 60 * 1000; // 15 minutes in milliseconds
+        const lockDuration = 15 * 60 * 1000;
         const lockUntil = new Date(Date.now() + lockDuration).toISOString();
         fields.push('locked_until = CASE WHEN failed_login_attempts >= 4 THEN ? ELSE locked_until END');
         params.push(lockUntil);
@@ -669,39 +777,47 @@ const updateUserLoginInfo = async (id, loginData = {}) => {
     );
 };
 
-const getUsers = async (filters = {}) => {
-    let sql = 'SELECT id, username, role, client_name, email, phone, last_login, failed_login_attempts, locked_until, active, created_at FROM users WHERE 1=1';
-    const params = [];
+// Fonctions pour les permissions détaillées
+const addUserPermission = async (permissionData) => {
+    const { user_id, permission_type, resource, resource_id, granted_by, expires_at } = permissionData;
     
-    if (filters.role) {
-        sql += ' AND role = ?';
-        params.push(filters.role);
-    }
-    
-    if (filters.active !== undefined) {
-        sql += ' AND active = ?';
-        params.push(filters.active ? 1 : 0);
-    }
-    
-    if (filters.client_name) {
-        sql += ' AND client_name = ?';
-        params.push(filters.client_name);
-    }
-    
-    sql += ' ORDER BY created_at DESC';
-    
-    return await db.all(sql, params);
+    return await db.run(`
+        INSERT INTO user_permissions (user_id, permission_type, resource, resource_id, granted_by, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `, [user_id, permission_type, resource, resource_id, granted_by, expires_at]);
 };
 
-const deleteUser = async (id) => {
-    const user = await getUserById(id);
-    const result = await db.run('UPDATE users SET active = 0 WHERE id = ?', [id]);
+const getUserPermissionsDetailed = async (userId) => {
+    return await db.all(`
+        SELECT * FROM user_permissions 
+        WHERE user_id = ? AND (expires_at IS NULL OR expires_at > datetime('now'))
+        ORDER BY permission_type, resource, resource_id
+    `, [userId]);
+};
+
+const updateUserPermission = async (userId, permission, resource, resourceId, granted) => {
+    return await db.run(`
+        INSERT OR REPLACE INTO user_permissions 
+        (user_id, permission_type, resource, resource_id, granted)
+        VALUES (?, ?, ?, ?, ?)
+    `, [userId, permission, resource, resourceId, granted]);
+};
+
+const deleteUserPermission = async (userId, permission, resource = null, resourceId = null) => {
+    let sql = 'DELETE FROM user_permissions WHERE user_id = ? AND permission_type = ?';
+    const params = [userId, permission];
     
-    if (user) {
-        await logActivity('USER_DELETED', user.client_name, null, null, { userId: id, username: user.username });
+    if (resource) {
+        sql += ' AND resource = ?';
+        params.push(resource);
     }
     
-    return result;
+    if (resourceId) {
+        sql += ' AND resource_id = ?';
+        params.push(resourceId);
+    }
+    
+    return await db.run(sql, params);
 };
 
 module.exports = {
@@ -743,11 +859,20 @@ module.exports = {
     getNetworkStatsByClient,
     
     // Users
-    addUser,
-    getUserByUsername,
+    getAllUsers,
+    createUser,
     getUserById,
     updateUser,
+    updateUserPassword,
+    toggleUserStatus,
+    deleteUser,
+    getUserStats,
+    getUserByUsername,
     updateUserLoginInfo,
-    getUsers,
-    deleteUser
+    
+    // Permissions
+    addUserPermission,
+    getUserPermissionsDetailed,
+    updateUserPermission,
+    deleteUserPermission
 };
