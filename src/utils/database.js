@@ -22,7 +22,7 @@ class Database {
                     return;
                 }
                 
-                console.log(`Base de données SQLite connectée: ${this.dbPath}`);
+                // Base de données SQLite connectée
                 this.createTables().then(resolve).catch(reject);
             });
         });
@@ -151,6 +151,24 @@ class Database {
                 expires_at DATETIME,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY (granted_by) REFERENCES users(id)
+            )`,
+            
+            // Table des planifications personnalisées
+            `CREATE TABLE IF NOT EXISTS custom_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                cron_pattern TEXT NOT NULL,
+                backup_type TEXT NOT NULL,
+                description TEXT,
+                client_names TEXT,
+                active BOOLEAN DEFAULT 1,
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_run DATETIME,
+                next_run DATETIME,
+                run_count INTEGER DEFAULT 0,
+                FOREIGN KEY (created_by) REFERENCES users(id)
             )`
         ];
 
@@ -183,7 +201,7 @@ class Database {
         } catch (error) {
             // La colonne existe déjà, ignorer l'erreur
             if (!error.message.includes('duplicate column name')) {
-                console.log('Migration os_type:', error.message);
+                // Migration os_type déjà effectuée
             }
         }
 
@@ -193,7 +211,7 @@ class Database {
         } catch (error) {
             // La colonne existe déjà, ignorer l'erreur
             if (!error.message.includes('duplicate column name')) {
-                console.log('Migration permissions:', error.message);
+                // Migration permissions déjà effectuée
             }
         }
 
@@ -203,11 +221,11 @@ class Database {
         } catch (error) {
             // La colonne existe déjà, ignorer l'erreur
             if (!error.message.includes('duplicate column name')) {
-                console.log('Migration email:', error.message);
+                // Migration email déjà effectuée
             }
         }
 
-        console.log('Tables de base de données créées/vérifiées');
+        // Tables de base de données créées/vérifiées
     }
 
     run(sql, params = []) {
@@ -253,7 +271,7 @@ class Database {
                     reject(err);
                     return;
                 }
-                console.log('Base de données fermée');
+                // Base de données fermée
                 resolve();
             });
         });
@@ -299,6 +317,10 @@ const getClients = async (filters = {}) => {
 
 const getClient = async (id) => {
     return await db.get('SELECT * FROM clients WHERE id = ?', [id]);
+};
+
+const getClientByName = async (name) => {
+    return await db.get('SELECT * FROM clients WHERE name = ?', [name]);
 };
 
 const updateClient = async (id, clientData) => {
@@ -424,12 +446,12 @@ const getBackups = async (filters = {}) => {
         params.push(filters.since);
     }
     
+    sql += ' ORDER BY created_at DESC';
+    
     if (filters.limit) {
         sql += ' LIMIT ?';
         params.push(filters.limit);
     }
-    
-    sql += ' ORDER BY created_at DESC';
     
     const backups = await db.all(sql, params);
     
@@ -820,6 +842,96 @@ const deleteUserPermission = async (userId, permission, resource = null, resourc
     return await db.run(sql, params);
 };
 
+// Fonctions pour les planifications personnalisées
+const addCustomSchedule = async (scheduleData) => {
+    const { name, cron_pattern, backup_type, description, client_names, created_by } = scheduleData;
+    
+    return await db.run(`
+        INSERT INTO custom_schedules (name, cron_pattern, backup_type, description, client_names, created_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+    `, [name, cron_pattern, backup_type, description, client_names, created_by]);
+};
+
+const getCustomSchedules = async (activeOnly = false) => {
+    let sql = 'SELECT * FROM custom_schedules';
+    if (activeOnly) {
+        sql += ' WHERE active = 1';
+    }
+    sql += ' ORDER BY created_at DESC';
+    
+    return await db.all(sql);
+};
+
+const getCustomSchedule = async (name) => {
+    return await db.get('SELECT * FROM custom_schedules WHERE name = ?', [name]);
+};
+
+const updateCustomSchedule = async (name, updates) => {
+    const fields = [];
+    const params = [];
+    
+    if (updates.cron_pattern !== undefined) {
+        fields.push('cron_pattern = ?');
+        params.push(updates.cron_pattern);
+    }
+    
+    if (updates.backup_type !== undefined) {
+        fields.push('backup_type = ?');
+        params.push(updates.backup_type);
+    }
+    
+    if (updates.description !== undefined) {
+        fields.push('description = ?');
+        params.push(updates.description);
+    }
+    
+    if (updates.client_names !== undefined) {
+        fields.push('client_names = ?');
+        params.push(updates.client_names);
+    }
+    
+    if (updates.active !== undefined) {
+        fields.push('active = ?');
+        params.push(updates.active ? 1 : 0);
+    }
+    
+    if (updates.last_run !== undefined) {
+        fields.push('last_run = ?');
+        params.push(updates.last_run);
+    }
+    
+    if (updates.next_run !== undefined) {
+        fields.push('next_run = ?');
+        params.push(updates.next_run);
+    }
+    
+    if (updates.run_count !== undefined) {
+        fields.push('run_count = ?');
+        params.push(updates.run_count);
+    }
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    params.push(name);
+    
+    return await db.run(
+        `UPDATE custom_schedules SET ${fields.join(', ')} WHERE name = ?`,
+        params
+    );
+};
+
+const deleteCustomSchedule = async (name) => {
+    return await db.run('DELETE FROM custom_schedules WHERE name = ?', [name]);
+};
+
+const incrementScheduleRunCount = async (name) => {
+    return await db.run(`
+        UPDATE custom_schedules 
+        SET run_count = run_count + 1, 
+            last_run = CURRENT_TIMESTAMP 
+        WHERE name = ?
+    `, [name]);
+};
+
 module.exports = {
     db,
     initDatabase,
@@ -828,6 +940,7 @@ module.exports = {
     addClient,
     getClients,
     getClient,
+    getClientByName,
     updateClient,
     deleteClient,
     
@@ -874,5 +987,13 @@ module.exports = {
     addUserPermission,
     getUserPermissionsDetailed,
     updateUserPermission,
-    deleteUserPermission
+    deleteUserPermission,
+    
+    // Custom Schedules
+    addCustomSchedule,
+    getCustomSchedules,
+    getCustomSchedule,
+    updateCustomSchedule,
+    deleteCustomSchedule,
+    incrementScheduleRunCount
 };

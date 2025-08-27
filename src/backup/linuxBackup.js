@@ -1,7 +1,7 @@
 const { Client } = require('ssh2');
 const path = require('path');
 const fs = require('fs');
-const { createClientLogger } = require('../utils/logger');
+const { createClientLogger, createBackupLogger } = require('../utils/logger');
 const { addNetworkStats } = require('../utils/database');
 const backupExclusions = require('../utils/backup-exclusions');
 const { retrySshOperation, retryBackupOperation } = require('../utils/retry-helper');
@@ -10,24 +10,39 @@ class LinuxBackupClient {
     constructor(clientConfig) {
         this.config = clientConfig;
         this.logger = createClientLogger(clientConfig.name);
+        this.backupLogger = null; // Sera initialisé lors du backup
         this.sshClient = null;
         this.isConnected = false;
     }
 
     async connect() {
         return await retrySshOperation(async () => {
+            this.logger.info(`🔄 Tentative de connexion SSH vers ${this.config.host}:${this.config.port || 22}`);
+            this.logger.info(`👤 Utilisateur: ${this.config.username}`);
+            
             return new Promise((resolve, reject) => {
                 this.sshClient = new Client();
                 
                 this.sshClient.on('ready', () => {
                     this.isConnected = true;
-                    this.logger.info('Connexion SSH établie avec succès');
+                    this.logger.info(`✅ Connexion SSH Linux établie avec succès vers ${this.config.host}`);
+                    if (this.backupLogger) {
+                        this.backupLogger.info(`✅ Connexion SSH Linux réussie vers ${this.config.host}:${this.config.port || 22}`);
+                    }
                     resolve();
                 });
 
                 this.sshClient.on('error', (err) => {
-                    this.logger.error(`Erreur de connexion SSH avec ${this.config.host}:`, err);
-                    reject(err);
+                    const errorMsg = this.getSSHErrorMessage(err);
+                    this.logger.error(`❌ Échec connexion SSH Linux: ${errorMsg}`);
+                    if (this.backupLogger) {
+                        this.backupLogger.error(`❌ CONNEXION SSH LINUX ÉCHOUÉE`);
+                        this.backupLogger.error(`🚨 Host: ${this.config.host}:${this.config.port || 22}`);
+                        this.backupLogger.error(`👤 Utilisateur: ${this.config.username}`);
+                        this.backupLogger.error(`💥 Erreur: ${errorMsg}`);
+                        this.backupLogger.error(`📍 Détail technique: ${err.message}`);
+                    }
+                    reject(new Error(`Connexion SSH impossible: ${errorMsg}`));
                 });
 
                 this.sshClient.connect({
@@ -40,6 +55,24 @@ class LinuxBackupClient {
                 });
             });
         }, this.config);
+    }
+
+    getSSHErrorMessage(error) {
+        if (error.code === 'ENOTFOUND') {
+            return `Host introuvable (${this.config.host})`;
+        } else if (error.code === 'ECONNREFUSED') {
+            return `Connexion refusée (port ${this.config.port || 22} fermé ?)`;
+        } else if (error.code === 'ETIMEDOUT') {
+            return `Timeout de connexion (host inaccessible ou pare-feu)`;
+        } else if (error.level === 'authentication') {
+            return `Authentification échouée (vérifier utilisateur/mot de passe)`;
+        } else if (error.message && error.message.includes('Authentication')) {
+            return `Authentification échouée (vérifier utilisateur/mot de passe)`;
+        } else if (error.message && error.message.includes('Host key')) {
+            return `Vérification de clé d'hôte échouée`;
+        } else {
+            return error.message || 'Erreur inconnue';
+        }
     }
 
     async disconnect() {
@@ -492,27 +525,65 @@ class LinuxBackupClient {
         const backupId = options.backupId || `backup_${this.config.name}_${Date.now()}`;
         const progressCallback = options.progressCallback || (() => {});
         
+        // Initialiser le logger spécifique au backup
+        this.backupLogger = createBackupLogger(this.config.name, backupId);
+        
         try {
+            this.backupLogger.info(`🐧 =================================`);
+            this.backupLogger.info(`🐧 DÉMARRAGE BACKUP LINUX COMPLET`);
+            this.backupLogger.info(`🐧 =================================`);
+            this.backupLogger.info(`📋 Client: ${this.config.name}`);
+            this.backupLogger.info(`🆔 Backup ID: ${backupId}`);
+            this.backupLogger.info(`🖥️ Host: ${this.config.host}:${this.config.port || 22}`);
+            this.backupLogger.info(`👤 Utilisateur: ${this.config.username}`);
+            this.backupLogger.info(`📂 Dossiers: ${options.folders || 'Auto-détection Linux'}`);
+            
+            this.backupLogger.info(`🔌 Étape 1/3: Connexion SSH`);
             progressCallback('Connexion SSH...', 30);
             await this.connect();
             
+            this.backupLogger.info(`📦 Étape 2/3: Création du backup`);
             progressCallback('Démarrage du backup', 35);
             const result = await this.createBackup('full', options.folders, backupId, progressCallback);
+            
+            this.backupLogger.info(`🔌 Étape 3/3: Fermeture connexion`);
             await this.disconnect();
+            
+            // Statistiques finales
+            const sizeMB = Math.round(result.size / (1024 * 1024));
+            const fileCount = result.networkStats?.filesCount || 0;
+            const duration = result.networkStats?.durationSeconds || 0;
+            const speed = result.networkStats?.transferSpeedMbps || 0;
+            
+            this.backupLogger.info(`🎉 =================================`);
+            this.backupLogger.info(`🎉 BACKUP LINUX TERMINÉ AVEC SUCCÈS`);
+            this.backupLogger.info(`🎉 =================================`);
+            this.backupLogger.info(`📊 Taille archive: ${sizeMB} MB`);
+            this.backupLogger.info(`📁 Nombre de fichiers: ${fileCount}`);
+            this.backupLogger.info(`⏱️ Durée: ${duration}s`);
+            this.backupLogger.info(`🚀 Vitesse: ${speed.toFixed(1)} Mbps`);
+            this.backupLogger.info(`💾 Chemin: ${result.archivePath}`);
             
             return {
                 success: true,
                 backupId: backupId,
                 metadata: {
-                    size_mb: Math.round(result.size / (1024 * 1024)),
-                    file_count: result.networkStats?.filesCount || 0,
-                    duration_seconds: result.networkStats?.durationSeconds || 0,
-                    speed_mbps: result.networkStats?.transferSpeedMbps || 0
+                    size_mb: sizeMB,
+                    file_count: fileCount,
+                    duration_seconds: duration,
+                    speed_mbps: speed
                 },
                 path: result.archivePath,
                 results: result.results
             };
         } catch (error) {
+            this.backupLogger.error(`❌ =================================`);
+            this.backupLogger.error(`❌ ÉCHEC DU BACKUP LINUX`);
+            this.backupLogger.error(`❌ =================================`);
+            this.backupLogger.error(`🚨 Erreur: ${error.message}`);
+            this.backupLogger.error(`📍 Stack trace: ${error.stack}`);
+            this.backupLogger.error(`⏰ Heure échec: ${new Date().toISOString()}`);
+            
             this.logger.error('Erreur lors du backup complet:', error);
             throw error;
         }

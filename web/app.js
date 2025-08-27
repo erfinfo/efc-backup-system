@@ -5,6 +5,7 @@ let currentSection = 'dashboard';
 let clients = [];
 let backups = [];
 let currentUser = null;
+let userPermissions = null;
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', () => {
@@ -16,8 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         initializeApp();
         setupEventListeners();
-        loadDashboardData();
-        setupUserInterface();
+        loadUserPermissions().then(() => {
+            setupUserInterface();
+            loadDashboardData();
+        });
     });
 });
 
@@ -113,18 +116,22 @@ async function loadDashboardData() {
             document.getElementById('last-run').textContent = 
                 data.summary.lastRun ? new Date(data.summary.lastRun).toLocaleString('fr-FR') : '-';
             
+            // Mettre à jour les indicateurs de status (données API complètes)
+            updateDataStatus('clients-status', 'real-data', 'API Dashboard');
+            updateDataStatus('backups-status', 'real-data', 'API Dashboard');
+            updateDataStatus('storage-status', 'real-data', 'API Dashboard');
+            updateDataStatus('lastrun-status', 'real-data', 'API Dashboard');
+            
             // Charger les backups récents
             loadRecentBackupsFromAPI();
         } else {
-            // Fallback sur les données simulées
+            // Fallback sur les données basiques
             updateStats();
-            loadRecentBackups();
         }
     } catch (error) {
-        console.error('Erreur lors du chargement des données:', error);
-        // Fallback sur les données simulées
-        updateStats();
-        loadRecentBackups();
+        console.error('Erreur lors du chargement des données dashboard:', error);
+        // Charger les données de base disponibles
+        await loadBasicStats();
     }
 }
 
@@ -150,66 +157,156 @@ async function loadRecentBackupsFromAPI() {
                     </tr>
                 `).join('');
             } else {
-                loadRecentBackups(); // Afficher les données simulées
+                showNoBackupsMessage(); // Afficher un message approprié
             }
         } else {
-            loadRecentBackups(); // Fallback
+            showNoBackupsMessage(); // Pas de backups disponibles
         }
     } catch (error) {
         console.error('Erreur lors du chargement des backups:', error);
-        loadRecentBackups(); // Fallback
+        showBackupsError(); // Erreur de chargement
+    }
+}
+
+async function loadBasicStats() {
+    try {
+        // Charger les clients avec authentification
+        let clientsCount = 0;
+        try {
+            const clientsResponse = await apiRequest(`${API_URL}/clients`);
+            if (clientsResponse.ok) {
+                const clients = await clientsResponse.json();
+                clientsCount = clients.filter(c => c.active !== false).length;
+            }
+        } catch (e) {
+            console.warn('Impossible de charger les clients');
+        }
+
+        // Charger les backups avec authentification
+        let backupsToday = 0;
+        let totalStorage = 0;
+        try {
+            const backupsResponse = await apiRequest(`${API_URL}/backups`);
+            if (backupsResponse.ok) {
+                const backups = await backupsResponse.json();
+                
+                // Compter les backups d'aujourd'hui
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                backupsToday = backups.filter(backup => {
+                    const backupDate = new Date(backup.created_at);
+                    return backupDate >= today;
+                }).length;
+                
+                // Calculer l'espace total
+                totalStorage = backups.reduce((sum, backup) => {
+                    return sum + (backup.size_mb || 0);
+                }, 0);
+            }
+        } catch (e) {
+            console.warn('Impossible de charger les backups');
+        }
+
+        // Mettre à jour l'interface avec les vraies données
+        document.getElementById('active-clients').textContent = clientsCount.toString();
+        document.getElementById('today-backups').textContent = backupsToday.toString();
+        document.getElementById('storage-used').textContent = 
+            totalStorage > 1024 ? `${(totalStorage / 1024).toFixed(1)} GB` : `${totalStorage} MB`;
+        document.getElementById('last-run').textContent = 
+            backupsToday > 0 ? 'Données récentes disponibles' : 'Aucun backup récent';
+
+        // Mettre à jour les indicateurs de status
+        updateDataStatus('clients-status', clientsCount > 0 ? 'real-data' : 'fallback-data', 
+                         clientsCount > 0 ? 'Données réelles' : 'Aucun client actif');
+        updateDataStatus('backups-status', backupsToday > 0 ? 'real-data' : 'fallback-data', 
+                         backupsToday > 0 ? 'Données du jour' : 'Aucun backup aujourd\'hui');
+        updateDataStatus('storage-status', totalStorage > 0 ? 'real-data' : 'fallback-data', 
+                         totalStorage > 0 ? 'Calcul réel' : 'Pas de données');
+        updateDataStatus('lastrun-status', 'real-data', 'Statut en temps réel');
+
+        // Charger les backups récents si possible
+        loadRecentBackupsFromAPI();
+        
+    } catch (error) {
+        console.error('Erreur chargement stats basiques:', error);
+        // En dernier recours, afficher des zéros plutôt que des données fictives
+        document.getElementById('active-clients').textContent = '0';
+        document.getElementById('today-backups').textContent = '0';
+        document.getElementById('storage-used').textContent = '0 GB';
+        document.getElementById('last-run').textContent = 'Données non disponibles';
+        
+        // Indicateurs d'erreur
+        updateDataStatus('clients-status', 'error-data', 'Erreur chargement');
+        updateDataStatus('backups-status', 'error-data', 'Erreur chargement');
+        updateDataStatus('storage-status', 'error-data', 'Erreur chargement');
+        updateDataStatus('lastrun-status', 'error-data', 'Erreur chargement');
+    }
+}
+
+function updateDataStatus(elementId, statusClass, message) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.className = `data-status ${statusClass}`;
+        element.textContent = message;
     }
 }
 
 function updateStats() {
-    // Simuler les statistiques (remplacer par des données réelles)
-    document.getElementById('active-clients').textContent = '5';
-    document.getElementById('today-backups').textContent = '12';
-    document.getElementById('storage-used').textContent = '245 GB';
-    document.getElementById('last-run').textContent = new Date().toLocaleString('fr-FR');
+    // Fonction obsolète - remplacée par loadBasicStats()
+    // Gardée pour compatibilité mais redirige vers les vraies données
+    loadBasicStats();
 }
 
-function loadRecentBackups() {
+function showNoBackupsMessage() {
     const recentBackupsList = document.getElementById('recent-backups-list');
     if (!recentBackupsList) return;
 
-    // Simuler des données de backup
-    const mockBackups = [
-        {
-            client: 'Client A',
-            type: 'Complet',
-            status: 'success',
-            size: '12.5 GB',
-            date: new Date().toLocaleString('fr-FR')
-        },
-        {
-            client: 'Client B',
-            type: 'Incrémentiel',
-            status: 'success',
-            size: '2.3 GB',
-            date: new Date(Date.now() - 3600000).toLocaleString('fr-FR')
-        },
-        {
-            client: 'Client C',
-            type: 'Complet',
-            status: 'failed',
-            size: '-',
-            date: new Date(Date.now() - 7200000).toLocaleString('fr-FR')
-        }
-    ];
-
-    recentBackupsList.innerHTML = mockBackups.map(backup => `
+    recentBackupsList.innerHTML = `
         <tr>
-            <td>${backup.client}</td>
-            <td>${backup.type}</td>
-            <td><span class="badge badge-${backup.status === 'success' ? 'success' : 'danger'}">${backup.status === 'success' ? 'Réussi' : 'Échoué'}</span></td>
-            <td>${backup.size}</td>
-            <td>${backup.date}</td>
-            <td>
-                <button class="btn btn-sm" onclick="viewBackupDetails('${backup.client}')">Détails</button>
+            <td colspan="6" class="empty-cell">
+                <div class="no-data-message">
+                    <span class="no-data-icon">📋</span>
+                    <h4>Aucun backup récent</h4>
+                    <p>Aucun backup n'a été effectué récemment.</p>
+                    <div class="no-data-actions">
+                        <button class="btn btn-primary" onclick="navigateToSection('clients')">
+                            ➕ Configurer des clients
+                        </button>
+                        <button class="btn btn-secondary" onclick="navigateToSection('schedule')">
+                            ⏰ Planifier des backups
+                        </button>
+                    </div>
+                </div>
             </td>
         </tr>
-    `).join('');
+    `;
+}
+
+function showBackupsError() {
+    const recentBackupsList = document.getElementById('recent-backups-list');
+    if (!recentBackupsList) return;
+
+    recentBackupsList.innerHTML = `
+        <tr>
+            <td colspan="6" class="empty-cell">
+                <div class="error-message">
+                    <span class="error-icon">❌</span>
+                    <h4>Erreur de chargement</h4>
+                    <p>Impossible de charger les backups récents.</p>
+                    <button class="btn btn-primary" onclick="loadRecentBackupsFromAPI()">
+                        🔄 Réessayer
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+function loadRecentBackups() {
+    // Fonction obsolète - remplacée par showNoBackupsMessage()
+    // Rediriger vers l'affichage approprié
+    showNoBackupsMessage();
 }
 
 async function loadSectionData(section) {
@@ -255,13 +352,38 @@ async function loadClients() {
         // Charger les vrais clients depuis l'API
         const response = await fetch(`${API_URL}/clients`);
         if (response.ok) {
-            const apiClients = await response.json();
+            let apiClients = await response.json();
+            
+            // Filtrer selon les permissions utilisateur
+            if (userPermissions && userPermissions.role !== 'admin' && !userPermissions.clientAccess.canViewAll) {
+                const allowedClients = userPermissions.clientAccess.allowedClients;
+                apiClients = apiClients.filter(client => allowedClients.includes(client.name));
+            }
+            
             clients = apiClients; // Stocker globalement
             
             if (apiClients.length > 0) {
                 clientsList.innerHTML = apiClients.map(client => `
-                    <div class="client-card">
+                    <div class="client-card" id="client-card-${client.id}">
                         <h3>${client.name}</h3>
+                        
+                        <!-- État du backup -->
+                        <div class="backup-status" id="backup-status-${client.id}">
+                            <div class="status-info">
+                                <span class="status-text">Prêt pour backup</span>
+                                <span class="status-time" id="status-time-${client.id}"></span>
+                            </div>
+                            <div class="progress-container" id="progress-container-${client.id}" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill-${client.id}" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-text">
+                                    <span id="progress-step-${client.id}">Initialisation...</span>
+                                    <span id="progress-percent-${client.id}">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="client-info">
                             <span>IP: ${client.host}</span>
                             <span>Port: ${client.port}</span>
@@ -272,7 +394,10 @@ async function loadClients() {
                             <span>Créé: ${new Date(client.created_at).toLocaleDateString('fr-FR')}</span>
                         </div>
                         <div class="client-actions">
-                            <button class="btn btn-primary btn-sm" onclick="startBackup(${client.id})">Backup</button>
+                            <button class="btn btn-success btn-sm" id="backup-btn-${client.id}" onclick="startManualBackup(${client.id})" ${!client.active ? 'disabled' : ''}>
+                                <span class="btn-icon">🚀</span>
+                                Démarrer Backup
+                            </button>
                             <button class="btn btn-secondary btn-sm" onclick="editClient(${client.id})">Modifier</button>
                             <button class="btn btn-danger btn-sm" onclick="deleteClientConfirm(${client.id})">Supprimer</button>
                         </div>
@@ -288,6 +413,12 @@ async function loadClients() {
                     </div>
                 `;
             }
+            
+            // Démarrer le monitoring des backups après chargement des clients
+            setTimeout(startBackupStatusMonitoring, 1000);
+            
+            // Re-adapter les permissions après chargement des clients
+            setTimeout(adaptActionButtonsForPermissions, 500);
         }
     } catch (error) {
         console.error('Erreur lors du chargement des clients:', error);
@@ -300,70 +431,161 @@ async function loadClients() {
     }
 }
 
-function loadBackupsHistory() {
+async function loadBackupsHistory() {
     const backupsHistory = document.getElementById('backups-history');
     if (!backupsHistory) return;
 
-    // Charger l'historique des backups
+    // Charger l'historique des backups depuis l'API
     backupsHistory.innerHTML = '<p>Chargement de l\'historique...</p>';
     
-    // Simuler le chargement (remplacer par un appel API)
-    setTimeout(() => {
+    try {
+        const response = await fetch(`${API_URL}/backups`);
+        if (response.ok) {
+            const backups = await response.json();
+            
+            if (backups.length > 0) {
+                backupsHistory.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Client</th>
+                                <th>Type</th>
+                                <th>Taille</th>
+                                <th>Durée</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${backups.map(backup => `
+                                <tr>
+                                    <td>${new Date(backup.created_at).toLocaleString('fr-FR')}</td>
+                                    <td>${backup.client_name || 'Unknown'}</td>
+                                    <td>${backup.type || 'full'}</td>
+                                    <td>${backup.size_mb ? `${(backup.size_mb / 1024).toFixed(1)} GB` : '-'}</td>
+                                    <td>${backup.duration || '-'}</td>
+                                    <td><span class="badge badge-${backup.status === 'completed' ? 'success' : 'danger'}">
+                                        ${backup.status === 'completed' ? 'Réussi' : 'Échoué'}
+                                    </span></td>
+                                    <td>
+                                        <button class="btn btn-sm" onclick="viewBackupDetails('${backup.backup_id}')">Détails</button>
+                                        ${backup.status === 'completed' ? 
+                                          `<button class="btn btn-sm" onclick="downloadBackup('${backup.backup_id}')">Télécharger</button>` : ''
+                                        }
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } else {
+                backupsHistory.innerHTML = `
+                    <div class="no-data-message">
+                        <span class="no-data-icon">📋</span>
+                        <h4>Aucun backup dans l'historique</h4>
+                        <p>Aucun backup n'a encore été effectué.</p>
+                        <div class="no-data-actions">
+                            <button class="btn btn-primary" onclick="navigateToSection('clients')">
+                                ➕ Configurer des clients
+                            </button>
+                            <button class="btn btn-secondary" onclick="navigateToSection('schedule')">
+                                ⏰ Planifier des backups
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            throw new Error('Erreur de chargement');
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement de l\'historique:', error);
         backupsHistory.innerHTML = `
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Client</th>
-                        <th>Type</th>
-                        <th>Taille</th>
-                        <th>Durée</th>
-                        <th>Statut</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>${new Date().toLocaleString('fr-FR')}</td>
-                        <td>Client A</td>
-                        <td>Complet</td>
-                        <td>12.5 GB</td>
-                        <td>45 min</td>
-                        <td><span class="badge badge-success">Réussi</span></td>
-                        <td>
-                            <button class="btn btn-sm">Restaurer</button>
-                            <button class="btn btn-sm">Télécharger</button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+            <div class="error-message">
+                <span class="error-icon">❌</span>
+                <h4>Erreur de chargement</h4>
+                <p>Impossible de charger l'historique des backups.</p>
+                <button class="btn btn-primary" onclick="loadBackupsHistory()">
+                    🔄 Réessayer
+                </button>
+            </div>
         `;
-    }, 500);
+    }
 }
 
-function loadSchedule() {
+async function loadSchedule() {
     const scheduleList = document.getElementById('schedule-list');
     if (!scheduleList) return;
 
-    scheduleList.innerHTML = `
-        <div class="schedule-grid">
-            <div class="schedule-card">
-                <h3>Backup Quotidien</h3>
-                <p>Tous les jours à 02:00</p>
-                <p>Type: Incrémentiel</p>
-                <p>Clients: Tous</p>
-                <button class="btn btn-primary btn-sm">Modifier</button>
+    scheduleList.innerHTML = '<p>Chargement des planifications...</p>';
+
+    try {
+        const response = await fetch(`${API_URL}/schedules`);
+        if (response.ok) {
+            const data = await response.json();
+            const schedules = data.schedules || [];
+            
+            if (schedules.length > 0) {
+                scheduleList.innerHTML = `
+                    <div class="schedule-grid">
+                        ${schedules.map(schedule => `
+                            <div class="schedule-card">
+                                <h3>${schedule.name || 'Planification'}</h3>
+                                <p><strong>Pattern cron:</strong> ${schedule.cron_pattern}</p>
+                                <p><strong>Type:</strong> ${schedule.backup_type === 'full' ? 'Complet' : 
+                                                         schedule.backup_type === 'incremental' ? 'Incrémentiel' : 
+                                                         schedule.backup_type || 'Non spécifié'}</p>
+                                <p><strong>Description:</strong> ${schedule.description || 'Aucune'}</p>
+                                <p><strong>Clients:</strong> ${schedule.client_names || 'Tous'}</p>
+                                <p><strong>Statut:</strong> <span class="badge badge-${schedule.active ? 'success' : 'secondary'}">
+                                    ${schedule.active ? 'Actif' : 'Inactif'}</span></p>
+                                ${schedule.next_run ? `<p><strong>Prochaine:</strong> ${new Date(schedule.next_run).toLocaleString('fr-FR')}</p>` : ''}
+                                ${schedule.last_run ? `<p><strong>Dernière:</strong> ${new Date(schedule.last_run).toLocaleString('fr-FR')}</p>` : ''}
+                                <div class="schedule-actions">
+                                    <button class="btn btn-primary btn-sm" onclick="editSchedule('${schedule.name}')">Modifier</button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteSchedule('${schedule.name}')">Supprimer</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn btn-primary" style="margin-top: 1rem;" onclick="showAddScheduleModal()">
+                        ➕ Ajouter une planification
+                    </button>
+                `;
+            } else {
+                scheduleList.innerHTML = `
+                    <div class="no-data-message">
+                        <span class="no-data-icon">⏰</span>
+                        <h4>Aucune planification configurée</h4>
+                        <p>Configurez des planifications automatiques pour vos backups.</p>
+                        <div class="no-data-actions">
+                            <button class="btn btn-primary" onclick="showAddScheduleModal()">
+                                ➕ Créer une planification
+                            </button>
+                            <button class="btn btn-secondary" onclick="navigateToSection('clients')">
+                                👥 Configurer des clients d'abord
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            throw new Error('Erreur de chargement');
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des planifications:', error);
+        scheduleList.innerHTML = `
+            <div class="error-message">
+                <span class="error-icon">❌</span>
+                <h4>Erreur de chargement</h4>
+                <p>Impossible de charger les planifications.</p>
+                <button class="btn btn-primary" onclick="loadSchedule()">
+                    🔄 Réessayer
+                </button>
             </div>
-            <div class="schedule-card">
-                <h3>Backup Hebdomadaire</h3>
-                <p>Dimanche à 03:00</p>
-                <p>Type: Complet</p>
-                <p>Clients: Tous</p>
-                <button class="btn btn-primary btn-sm">Modifier</button>
-            </div>
-        </div>
-        <button class="btn btn-primary" style="margin-top: 1rem;">Ajouter une planification</button>
-    `;
+        `;
+    }
 }
 
 async function loadLogs() {
@@ -408,10 +630,21 @@ async function refreshLogs() {
         if (selectedClient) {
             // Charger les logs spécifiques au client
             const response = await fetch(`${API_URL}/logs/clients/${encodeURIComponent(selectedClient)}?limit=100&level=${selectedLevel}&type=${selectedType}`);
+            
+            if (!response.ok) {
+                throw new Error(`Erreur HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             logs = await response.json();
+            console.log(`Logs chargés pour ${selectedClient}:`, logs.length, 'entrées');
         } else {
             // Charger les logs globaux
             const response = await fetch(`${API_URL}/logs?limit=100&level=${selectedLevel}`);
+            
+            if (!response.ok) {
+                throw new Error(`Erreur HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             logs = await response.json();
         }
 
@@ -420,7 +653,14 @@ async function refreshLogs() {
             logContent.innerHTML = '<div class="log-entry info">Aucun log disponible</div>';
         } else {
             logContent.innerHTML = logs.map(log => {
-                const timestamp = new Date(log.timestamp).toLocaleTimeString();
+                const timestamp = new Date(log.timestamp).toLocaleString('fr-FR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
                 const clientInfo = log.clientName ? ` [${log.clientName}]` : '';
                 const logTypeInfo = log.logType ? ` (${log.logType})` : '';
                 
@@ -435,7 +675,25 @@ async function refreshLogs() {
         
     } catch (error) {
         console.error('Erreur lors du chargement des logs:', error);
-        logContent.innerHTML = '<div class="log-entry error">Erreur lors du chargement des logs</div>';
+        
+        let errorMessage = 'Erreur lors du chargement des logs';
+        if (error.message.includes('401')) {
+            errorMessage = 'Erreur d\'authentification - Veuillez vous reconnecter';
+        } else if (error.message.includes('404')) {
+            errorMessage = 'Aucun log trouvé pour ce client';
+        } else if (error.message.includes('500')) {
+            errorMessage = 'Erreur serveur - Vérifiez les logs serveur';
+        } else if (error.message) {
+            errorMessage = `Erreur: ${error.message}`;
+        }
+        
+        logContent.innerHTML = `<div class="log-entry error">${errorMessage}</div>`;
+        
+        // Si c'est un client spécifique, essayer de charger un message informatif
+        if (selectedClient) {
+            logContent.innerHTML += `<div class="log-entry info">Client sélectionné: ${selectedClient}</div>`;
+            logContent.innerHTML += `<div class="log-entry info">Type: ${selectedType}, Niveau: ${selectedLevel}</div>`;
+        }
     }
 }
 
@@ -454,7 +712,7 @@ async function loadSystemInfo() {
         ]);
 
         // Mise à jour de la version dans le footer
-        updateElement('app-version', `Version ${apiInfo.version || '1.3.0'}`);
+        updateElement('app-version', `Version ${apiInfo.version || '1.4.1'}`);
 
         // Mise à jour des informations serveur
         updateElement('os-info', `${systemStatus.system.os}`);
@@ -492,7 +750,7 @@ async function loadSystemInfo() {
 
         // Mise à jour de la configuration
         updateElement('server-port', '3000');
-        updateElement('backup-path-config', '/tmp/efc-backups-test');
+        // Le chemin sera chargé depuis l'API
         updateElement('retention-config', '30 jours');
         updateElement('parallel-config', '2');
         updateElement('vss-config', '✅ Activé');
@@ -579,14 +837,14 @@ function exportConfig() {
     // Exporter la configuration système
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.3.0',
+        version: '1.4.1',
         server: {
             port: 3000,
             host: '0.0.0.0',
             environment: 'development'
         },
         backup: {
-            path: '/tmp/efc-backups-test',
+            path: '',
             retention: 30,
             parallel: 2,
             vss: true
@@ -612,8 +870,14 @@ async function loadServerConfig() {
     try {
         // Charger la configuration actuelle depuis l'API
         const [settings, apiInfo] = await Promise.all([
-            fetch(`${API_URL}/settings`).then(r => r.json()).catch(() => ({})),
-            fetch(`${API_URL}/info`).then(r => r.json()).catch(() => ({}))
+            fetch(`${API_URL}/settings`).then(r => r.json()).catch(error => {
+                console.warn('Impossible de charger les paramètres:', error);
+                return {};
+            }),
+            fetch(`${API_URL}/info`).then(r => r.json()).catch(error => {
+                console.warn('Impossible de charger les infos API:', error);
+                return {};
+            })
         ]);
 
         // Configuration serveur
@@ -623,7 +887,7 @@ async function loadServerConfig() {
         document.getElementById('log-level-input').value = 'info';
 
         // Configuration backup
-        document.getElementById('backup-path-input').value = '/tmp/efc-backups-test';
+        document.getElementById('backup-path-input').value = '';
         document.getElementById('retention-days-input').value = settings.backup_retention_days || '30';
         document.getElementById('parallel-backups-input').value = settings.max_parallel_backups || '2';
         document.getElementById('vss-enabled-input').checked = true;
@@ -747,7 +1011,7 @@ function resetConfigToDefaults() {
         document.getElementById('server-env-input').value = 'development';
         document.getElementById('log-level-input').value = 'info';
         
-        document.getElementById('backup-path-input').value = '/tmp/efc-backups-test';
+        document.getElementById('backup-path-input').value = '';
         document.getElementById('retention-days-input').value = '30';
         document.getElementById('parallel-backups-input').value = '2';
         document.getElementById('vss-enabled-input').checked = true;
@@ -844,46 +1108,934 @@ async function testConfiguration() {
 }
 
 // Fonctions d'action
-function startManualBackup() {
-    if (confirm('Démarrer un backup manuel pour tous les clients actifs?')) {
-        showNotification('Backup manuel démarré', 'success');
-        // Implémenter le démarrage du backup
+// Fonction pour afficher le modal d'ajout de planification
+function showAddScheduleModal() {
+    // Vérifier les permissions admin
+    if (!userPermissions || userPermissions.role !== 'admin') {
+        showNotification('Cette fonctionnalité est réservée aux administrateurs', 'error');
+        return;
+    }
+    
+    // Créer le modal d'ajout de planification
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'add-schedule-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>➕ Ajouter une Planification</h2>
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="schedule-name">Nom de la planification:</label>
+                    <input type="text" id="schedule-name" class="form-control" placeholder="Ex: Backup hebdomadaire serveurs">
+                </div>
+                
+                <div class="form-group">
+                    <label for="schedule-type">Type de backup:</label>
+                    <select id="schedule-type" class="form-control">
+                        <option value="full">Complet</option>
+                        <option value="incremental">Incrémentiel</option>
+                        <option value="differential">Différentiel</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="schedule-frequency">Fréquence:</label>
+                    <select id="schedule-frequency" class="form-control" onchange="updateCronFields(this.value)">
+                        <option value="daily">Quotidien</option>
+                        <option value="weekly">Hebdomadaire</option>
+                        <option value="monthly">Mensuel</option>
+                        <option value="custom">Personnalisé (Cron)</option>
+                    </select>
+                </div>
+                
+                <div id="time-selection" class="form-group">
+                    <label for="schedule-time">Heure d'exécution:</label>
+                    <input type="time" id="schedule-time" class="form-control" value="02:00">
+                </div>
+                
+                <div id="day-selection" class="form-group" style="display: none;">
+                    <label for="schedule-day">Jour de la semaine:</label>
+                    <select id="schedule-day" class="form-control">
+                        <option value="0">Dimanche</option>
+                        <option value="1">Lundi</option>
+                        <option value="2">Mardi</option>
+                        <option value="3">Mercredi</option>
+                        <option value="4">Jeudi</option>
+                        <option value="5">Vendredi</option>
+                        <option value="6">Samedi</option>
+                    </select>
+                </div>
+                
+                <div id="date-selection" class="form-group" style="display: none;">
+                    <label for="schedule-date">Jour du mois (1-31):</label>
+                    <input type="number" id="schedule-date" class="form-control" min="1" max="31" value="1">
+                </div>
+                
+                <div id="cron-selection" class="form-group" style="display: none;">
+                    <label for="schedule-cron">Expression Cron:</label>
+                    <input type="text" id="schedule-cron" class="form-control" placeholder="0 2 * * *">
+                    <small class="form-text">Format: minute heure jour mois jour-semaine</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="schedule-clients">Clients concernés:</label>
+                    <select id="schedule-clients" class="form-control" multiple size="5">
+                        <option value="all">Tous les clients actifs</option>
+                    </select>
+                    <small class="form-text">Maintenez Ctrl pour sélectionner plusieurs clients</small>
+                </div>
+                
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" id="schedule-active" class="form-check-input" checked>
+                        <label for="schedule-active" class="form-check-label">
+                            Activer immédiatement cette planification
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Annuler</button>
+                <button class="btn btn-primary" onclick="saveSchedule()">
+                    💾 Enregistrer la Planification
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'block';
+    
+    // Charger la liste des clients
+    loadClientsForSchedule();
+}
+
+// Charger les clients pour la planification
+async function loadClientsForSchedule() {
+    try {
+        const response = await apiRequest('/api/clients');
+        if (response.ok) {
+            const clients = await response.json();
+            const select = document.getElementById('schedule-clients');
+            
+            // Garder l'option "Tous les clients"
+            select.innerHTML = '<option value="all" selected>Tous les clients actifs</option>';
+            
+            clients.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.name;  // Utiliser le nom au lieu de l'ID
+                option.textContent = `${client.name} (${client.os_type || 'Linux'})`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des clients:', error);
     }
 }
 
-async function startBackup(clientId) {
+// Mettre à jour les champs selon la fréquence sélectionnée
+function updateCronFields(frequency) {
+    document.getElementById('time-selection').style.display = 'block';
+    document.getElementById('day-selection').style.display = 'none';
+    document.getElementById('date-selection').style.display = 'none';
+    document.getElementById('cron-selection').style.display = 'none';
+    
+    switch(frequency) {
+        case 'daily':
+            // Juste l'heure
+            break;
+        case 'weekly':
+            document.getElementById('day-selection').style.display = 'block';
+            break;
+        case 'monthly':
+            document.getElementById('date-selection').style.display = 'block';
+            break;
+        case 'custom':
+            document.getElementById('time-selection').style.display = 'none';
+            document.getElementById('cron-selection').style.display = 'block';
+            break;
+    }
+}
+
+// Enregistrer la nouvelle planification
+async function saveSchedule() {
+    const name = document.getElementById('schedule-name').value.trim();
+    const type = document.getElementById('schedule-type').value;
+    const frequency = document.getElementById('schedule-frequency').value;
+    const active = document.getElementById('schedule-active').checked;
+    const clientsSelect = document.getElementById('schedule-clients');
+    
+    if (!name) {
+        showNotification('Veuillez entrer un nom pour la planification', 'error');
+        return;
+    }
+    
+    // Récupérer les clients sélectionnés
+    const selectedClients = Array.from(clientsSelect.selectedOptions).map(option => option.value);
+    if (selectedClients.length === 0) {
+        showNotification('Veuillez sélectionner au moins un client', 'error');
+        return;
+    }
+    
+    // Construire l'expression cron selon la fréquence
+    let cronExpression = '';
+    if (frequency === 'custom') {
+        cronExpression = document.getElementById('schedule-cron').value;
+        if (!cronExpression) {
+            showNotification('Veuillez entrer une expression cron valide', 'error');
+            return;
+        }
+    } else {
+        const time = document.getElementById('schedule-time').value;
+        const [hours, minutes] = time.split(':');
+        
+        // Convertir en entiers pour éviter les zéros en trop
+        const h = parseInt(hours);
+        const m = parseInt(minutes);
+        
+        switch(frequency) {
+            case 'daily':
+                cronExpression = `${m} ${h} * * *`;
+                break;
+            case 'weekly':
+                const day = document.getElementById('schedule-day').value;
+                cronExpression = `${m} ${h} * * ${day}`;
+                break;
+            case 'monthly':
+                const date = document.getElementById('schedule-date').value;
+                cronExpression = `${m} ${h} ${date} * *`;
+                break;
+        }
+    }
+    
+    // Créer l'objet planification
+    const scheduleData = {
+        name: name,
+        cron_pattern: cronExpression,  // L'API attend cron_pattern, pas cron
+        backup_type: type,
+        client_names: selectedClients.includes('all') ? ['all'] : selectedClients,  // L'API attend client_names et un array
+        description: `${frequency === 'daily' ? 'Quotidien' : frequency === 'weekly' ? 'Hebdomadaire' : frequency === 'monthly' ? 'Mensuel' : 'Personnalisé'} - ${type}`
+    };
+    
+    // Logs de debug
+    console.log('Données collectées:');
+    console.log('- name:', name);
+    console.log('- type:', type);
+    console.log('- frequency:', frequency);
+    console.log('- cronExpression:', cronExpression);
+    console.log('- selectedClients:', selectedClients);
+    console.log('Envoi de la planification:', scheduleData);
+    
+    console.log('Avant le try block');
+    
+    try {
+        console.log('Dans le try block');
+        console.log('Envoi de la requête...');
+        
+        // Utiliser fetch directement au lieu d'apiRequest
+        const response = await fetch('/api/schedules', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(scheduleData)
+        });
+        
+        console.log('Response reçue');
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Response data:', result);
+            showNotification('Planification créée avec succès', 'success');
+            document.getElementById('add-schedule-modal').remove();
+            
+            // Recharger la page des planifications si elle est affichée
+            if (document.getElementById('schedules-content')) {
+                showSchedules();
+            }
+        } else {
+            const error = await response.json();
+            console.error('Erreur serveur:', error);
+            showNotification(`Erreur: ${error.error || 'Impossible de créer la planification'}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erreur lors de la création de la planification:', error);
+        showNotification('Erreur lors de la création de la planification', 'error');
+    }
+}
+
+// Fonction pour ouvrir le modal de restauration rapide (admin seulement)
+function openQuickRestore() {
+    console.log('openQuickRestore appelée');
+    console.log('userPermissions:', userPermissions);
+    
+    // Vérifier si l'utilisateur est admin
+    if (!userPermissions || userPermissions.role !== 'admin') {
+        console.log('Accès refusé - pas admin');
+        showNotification('Cette fonctionnalité est réservée aux administrateurs', 'error');
+        return;
+    }
+    
+    console.log('Création du modal...');
+    
+    // Créer le modal de sélection pour la restauration
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'quick-restore-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔄 Restauration Rapide</h2>
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="restore-client-select">Sélectionner le client:</label>
+                    <select id="restore-client-select" class="form-control" onchange="loadClientBackups(this.value)">
+                        <option value="">-- Choisir un client --</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="backup-select-group" style="display: none;">
+                    <label for="restore-backup-select">Sélectionner le backup à restaurer:</label>
+                    <select id="restore-backup-select" class="form-control">
+                        <option value="">-- Choisir un backup --</option>
+                    </select>
+                </div>
+                
+                <div id="backup-details-preview" style="display: none; margin-top: 1rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px;">
+                    <!-- Les détails du backup sélectionné apparaîtront ici -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Annuler</button>
+                <button class="btn btn-primary" id="quick-restore-btn" disabled onclick="quickRestore()">
+                    🔄 Restaurer
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'block';
+    
+    // Charger la liste des clients
+    loadClientsForRestore();
+}
+
+// Charger la liste des clients pour la restauration
+async function loadClientsForRestore() {
+    try {
+        const response = await apiRequest('/api/clients');
+        if (response.ok) {
+            const clients = await response.json();
+            const select = document.getElementById('restore-client-select');
+            
+            clients.forEach(client => {
+                const option = document.createElement('option');
+                option.value = client.name;
+                option.textContent = `${client.name} (${client.os_type || 'Linux'})`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des clients:', error);
+        showNotification('Erreur lors du chargement des clients', 'error');
+    }
+}
+
+// Charger les backups d'un client sélectionné
+async function loadClientBackups(clientName) {
+    if (!clientName) {
+        document.getElementById('backup-select-group').style.display = 'none';
+        document.getElementById('backup-details-preview').style.display = 'none';
+        document.getElementById('quick-restore-btn').disabled = true;
+        return;
+    }
+    
+    try {
+        const response = await apiRequest(`/api/backups?client_name=${encodeURIComponent(clientName)}&status=completed`);
+        if (response.ok) {
+            const backups = await response.json();
+            const select = document.getElementById('restore-backup-select');
+            
+            // Vider la liste existante
+            select.innerHTML = '<option value="">-- Choisir un backup --</option>';
+            
+            // Filtrer et trier les backups (plus récents en premier)
+            const completedBackups = backups
+                .filter(b => b.status === 'completed' && b.path)
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            if (completedBackups.length === 0) {
+                select.innerHTML = '<option value="">Aucun backup disponible</option>';
+                document.getElementById('quick-restore-btn').disabled = true;
+            } else {
+                completedBackups.forEach(backup => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify({
+                        id: backup.backup_id,
+                        client: backup.client_name,
+                        path: backup.path
+                    });
+                    const date = new Date(backup.created_at).toLocaleString('fr-FR');
+                    const size = backup.size_mb ? `${backup.size_mb} MB` : 'Taille inconnue';
+                    option.textContent = `${date} - ${backup.type} - ${size}`;
+                    select.appendChild(option);
+                });
+            }
+            
+            // Afficher le sélecteur de backup
+            document.getElementById('backup-select-group').style.display = 'block';
+            
+            // Ajouter un événement pour afficher les détails du backup sélectionné
+            select.onchange = function() {
+                if (this.value) {
+                    const backupInfo = JSON.parse(this.value);
+                    showBackupPreview(backupInfo);
+                    document.getElementById('quick-restore-btn').disabled = false;
+                } else {
+                    document.getElementById('backup-details-preview').style.display = 'none';
+                    document.getElementById('quick-restore-btn').disabled = true;
+                }
+            };
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des backups:', error);
+        showNotification('Erreur lors du chargement des backups', 'error');
+    }
+}
+
+// Afficher les détails du backup sélectionné
+function showBackupPreview(backupInfo) {
+    const preview = document.getElementById('backup-details-preview');
+    preview.innerHTML = `
+        <h4>📦 Détails du backup sélectionné:</h4>
+        <p><strong>Client:</strong> ${backupInfo.client}</p>
+        <p><strong>ID Backup:</strong> ${backupInfo.id}</p>
+        <p><strong>Chemin:</strong> <code>${backupInfo.path}</code></p>
+        <div class="warning-message" style="margin-top: 1rem;">
+            <span class="warning-icon">⚠️</span>
+            Ce backup sera restauré dans un dossier temporaire. Vous pourrez choisir la destination dans l'étape suivante.
+        </div>
+    `;
+    preview.style.display = 'block';
+}
+
+// Lancer la restauration rapide
+function quickRestore() {
+    const backupSelect = document.getElementById('restore-backup-select');
+    if (!backupSelect.value) {
+        showNotification('Veuillez sélectionner un backup', 'error');
+        return;
+    }
+    
+    const backupInfo = JSON.parse(backupSelect.value);
+    
+    // Fermer le modal de sélection
+    document.getElementById('quick-restore-modal').remove();
+    
+    // Ouvrir le modal de restauration avec les infos du backup
+    restoreBackup(backupInfo.id, backupInfo.client);
+}
+
+// Démarrer un backup manuel avec suivi de progression
+async function startManualBackup(clientId) {
     const client = clients.find(c => c.id === clientId);
     if (!client) return;
     
-    if (confirm(`Démarrer un backup pour "${client.name}"?`)) {
-        try {
-            const response = await fetch(`${API_URL}/backups/start`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    clients: [client.name],
-                    type: client.backup_type || 'full'
-                })
+    if (!hasPermission('backups_create')) {
+        showNotification('Vous n\'avez pas la permission de démarrer un backup', 'error');
+        return;
+    }
+    
+    // Interface de sélection de type de backup
+    showBackupTypeModal(clientId, client.name);
+}
+
+// Afficher le modal de sélection de type de backup
+function showBackupTypeModal(clientId, clientName) {
+    const modalHtml = `
+        <div class="modal active" id="backup-type-modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeBackupTypeModal()">&times;</span>
+                <h2>🚀 Démarrer Backup Manuel</h2>
+                <p><strong>Client:</strong> ${clientName}</p>
+                
+                <div class="backup-type-selection">
+                    <div class="backup-type-option" onclick="selectBackupType('full')">
+                        <div class="backup-type-icon">💾</div>
+                        <div class="backup-type-info">
+                            <h3>Backup Complet</h3>
+                            <p>Sauvegarde complète de tous les fichiers</p>
+                            <small>⏱️ Plus long mais plus sûr</small>
+                        </div>
+                    </div>
+                    
+                    <div class="backup-type-option" onclick="selectBackupType('incremental')">
+                        <div class="backup-type-icon">📂</div>
+                        <div class="backup-type-info">
+                            <h3>Backup Incrémentiel</h3>
+                            <p>Sauvegarde uniquement les fichiers modifiés</p>
+                            <small>⚡ Plus rapide</small>
+                        </div>
+                    </div>
+                    
+                    <div class="backup-type-option" onclick="selectBackupType('differential')">
+                        <div class="backup-type-icon">🔄</div>
+                        <div class="backup-type-info">
+                            <h3>Backup Différentiel</h3>
+                            <p>Sauvegarde les modifications depuis le dernier complet</p>
+                            <small>⚖️ Compromis</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="backup-options" style="margin-top: 1.5rem; padding: 1rem; background: var(--surface-color); border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h3 style="margin: 0 0 0.75rem 0; color: var(--text-color); font-size: 0.9rem;">🔧 Options Avancées</h3>
+                    <div class="checkbox-group">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
+                            <input type="checkbox" id="create-image-option" style="margin: 0;">
+                            <span>💿 Créer une image disque Windows (wbadmin)</span>
+                        </label>
+                        <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-left: 1.5rem; margin-top: 0.25rem;">
+                            Disponible uniquement pour les clients Windows et les backups complets
+                        </div>
+                    </div>
+                </div>
+                
+                <input type="hidden" id="selected-client-id" value="${clientId}">
+            </div>
+        </div>
+    `;
+    
+    // Ajouter le modal au DOM
+    const existingModal = document.getElementById('backup-type-modal');
+    if (existingModal) existingModal.remove();
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeBackupTypeModal() {
+    const modal = document.getElementById('backup-type-modal');
+    if (modal) modal.remove();
+}
+
+async function selectBackupType(type) {
+    const clientId = document.getElementById('selected-client-id').value;
+    const client = clients.find(c => c.id == clientId);
+    
+    // Récupérer l'option image disque
+    const createImageCheckbox = document.getElementById('create-image-option');
+    const createImage = createImageCheckbox ? createImageCheckbox.checked : false;
+    
+    closeBackupTypeModal();
+    
+    if (!client) return;
+    
+    try {
+        // Démarrer le backup avec les options
+        const response = await apiRequest(`${API_URL}/backups/start/${clientId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                type: type,
+                createImage: createImage
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(`Backup ${type} démarré pour ${client.name}`, 'success');
+            
+            // Afficher la popup de progression
+            showBackupProgressModal(clientId, client.name, type, result.data.backupId);
+            
+            // Mettre à jour l'interface immédiatement
+            updateBackupStatus(clientId, {
+                status: 'starting',
+                progress: 0,
+                currentStep: 'Initialisation du backup',
+                backupId: result.data.backupId
             });
             
-            if (response.ok) {
-                const result = await response.json();
-                showNotification(`Backup démarré pour ${client.name}`, 'success');
-                // Recharger le dashboard pour voir les nouvelles stats
-                if (currentSection === 'dashboard') {
-                    setTimeout(loadDashboardData, 2000);
-                }
-            } else {
-                const error = await response.json();
-                showNotification(`Erreur: ${error.error || 'Impossible de démarrer le backup'}`, 'error');
-            }
-        } catch (error) {
-            console.error('Erreur lors du démarrage du backup:', error);
-            showNotification('Erreur de connexion au serveur', 'error');
+            // Démarrer le suivi en temps réel
+            startBackupStatusMonitoring();
+            
+        } else {
+            const error = await response.json();
+            const errorMsg = error.error || 'Impossible de démarrer le backup';
+            
+            // Afficher l'erreur détaillée
+            showNotification(`Erreur backup: ${errorMsg}`, 'error');
+            
+            // Mettre à jour le statut pour montrer l'échec
+            updateBackupStatus(clientId, {
+                status: 'failed',
+                progress: 0,
+                currentStep: `Échec: ${errorMsg}`,
+                error: errorMsg
+            });
+            
+            console.error('Détails erreur backup:', error);
+        }
+    } catch (error) {
+        console.error('Erreur lors du démarrage du backup:', error);
+        const errorMsg = 'Erreur de connexion au serveur';
+        showNotification(errorMsg, 'error');
+        
+        // Mettre à jour le statut pour montrer l'échec de connexion
+        updateBackupStatus(clientId, {
+            status: 'failed',
+            progress: 0,
+            currentStep: errorMsg,
+            error: errorMsg
+        });
+    }
+}
+
+// Mettre à jour le statut de backup d'un client
+function updateBackupStatus(clientId, status) {
+    const statusElement = document.getElementById(`backup-status-${clientId}`);
+    const progressContainer = document.getElementById(`progress-container-${clientId}`);
+    const progressFill = document.getElementById(`progress-fill-${clientId}`);
+    const progressStep = document.getElementById(`progress-step-${clientId}`);
+    const progressPercent = document.getElementById(`progress-percent-${clientId}`);
+    const statusText = statusElement?.querySelector('.status-text');
+    const statusTime = document.getElementById(`status-time-${clientId}`);
+    const backupBtn = document.getElementById(`backup-btn-${clientId}`);
+    
+    if (!statusElement) return;
+    
+    // Mettre à jour la classe de statut
+    statusElement.className = `backup-status status-${status.status}`;
+    
+    if (status.status === 'starting' || status.status === 'running') {
+        // Afficher la progression
+        if (progressContainer) progressContainer.style.display = 'block';
+        if (progressFill) {
+            progressFill.style.width = `${status.progress}%`;
+            progressFill.classList.add('animate');
+        }
+        if (progressStep) progressStep.textContent = status.currentStep || 'En cours...';
+        if (progressPercent) progressPercent.textContent = `${status.progress}%`;
+        if (statusText) statusText.textContent = status.status === 'starting' ? 'Démarrage...' : 'Backup en cours';
+        if (statusTime && status.startTime) {
+            statusTime.textContent = `Démarré: ${new Date(status.startTime).toLocaleString('fr-FR', {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            })}`;
+        }
+        
+        // Désactiver le bouton
+        if (backupBtn) {
+            backupBtn.disabled = true;
+            backupBtn.innerHTML = '<span class="btn-icon">⏳</span>En cours...';
+        }
+        
+    } else if (status.status === 'completed') {
+        // Masquer la progression
+        if (progressContainer) progressContainer.style.display = 'none';
+        if (statusText) statusText.textContent = 'Backup terminé';
+        if (statusTime) statusTime.textContent = `Terminé: ${new Date().toLocaleString('fr-FR', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        })}`;
+        
+        // Réactiver le bouton
+        if (backupBtn) {
+            backupBtn.disabled = false;
+            backupBtn.innerHTML = '<span class="btn-icon">🚀</span>Démarrer Backup';
+        }
+        
+        // Auto-masquer après 30 secondes
+        setTimeout(() => {
+            if (statusText) statusText.textContent = 'Prêt pour backup';
+            if (statusTime) statusTime.textContent = '';
+            statusElement.className = 'backup-status';
+        }, 30000);
+        
+    } else if (status.status === 'failed') {
+        // Masquer la progression
+        if (progressContainer) progressContainer.style.display = 'none';
+        if (statusText) statusText.textContent = 'Échec du backup';
+        if (statusTime) statusTime.textContent = status.error ? `Erreur: ${status.error}` : 'Erreur inconnue';
+        
+        // Réactiver le bouton
+        if (backupBtn) {
+            backupBtn.disabled = false;
+            backupBtn.innerHTML = '<span class="btn-icon">🚀</span>Démarrer Backup';
+        }
+        
+        // Auto-masquer après 60 secondes
+        setTimeout(() => {
+            if (statusText) statusText.textContent = 'Prêt pour backup';
+            if (statusTime) statusTime.textContent = '';
+            statusElement.className = 'backup-status';
+        }, 60000);
+    }
+}
+
+// Afficher une popup modale de progression de backup
+function showBackupProgressModal(clientId, clientName, backupType, backupId) {
+    // Supprimer l'ancienne popup si elle existe
+    const existingModal = document.getElementById('backup-progress-modal');
+    if (existingModal) existingModal.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'backup-progress-modal';
+    modal.className = 'modal active backup-progress-modal';
+    
+    modal.innerHTML = `
+        <div class="modal-content backup-progress-content">
+            <div class="modal-header">
+                <h2>🚀 Backup en cours</h2>
+                <button class="close-btn" onclick="closeBackupProgressModal()">×</button>
+            </div>
+            
+            <div class="backup-info">
+                <div class="info-row">
+                    <strong>Client:</strong> <span>${clientName}</span>
+                </div>
+                <div class="info-row">
+                    <strong>Type:</strong> <span>${backupType}</span>
+                </div>
+                <div class="info-row">
+                    <strong>ID:</strong> <span>${backupId}</span>
+                </div>
+            </div>
+            
+            <div class="progress-section">
+                <div class="progress-step-text" id="progress-step-modal">Initialisation du backup...</div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="progress-bar-modal" style="width: 0%"></div>
+                    <div class="progress-percentage" id="progress-percentage-modal">0%</div>
+                </div>
+            </div>
+            
+            <div class="backup-details" id="backup-details-modal">
+                <div class="detail-item">
+                    <span class="detail-label">Étape actuelle:</span>
+                    <span class="detail-value" id="current-step-modal">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Dossier en cours:</span>
+                    <span class="detail-value" id="current-folder-modal">-</span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Progression:</span>
+                    <span class="detail-value" id="folder-progress-modal">-</span>
+                </div>
+            </div>
+            
+            <div class="backup-actions">
+                <button class="btn btn-secondary" onclick="minimizeBackupProgressModal()">Minimiser</button>
+                <button class="btn btn-danger" onclick="confirmCancelBackup('${backupId}')" id="cancel-backup-btn">Annuler</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Stocker les références pour les mises à jour
+    window.currentBackupModal = {
+        clientId: clientId,
+        backupId: backupId,
+        modal: modal
+    };
+}
+
+// Fermer la popup de progression
+function closeBackupProgressModal() {
+    const modal = document.getElementById('backup-progress-modal');
+    if (modal) modal.remove();
+    window.currentBackupModal = null;
+}
+
+// Minimiser la popup (la garder mais la réduire)
+function minimizeBackupProgressModal() {
+    const modal = document.getElementById('backup-progress-modal');
+    if (modal) {
+        modal.classList.add('minimized');
+        modal.innerHTML = `
+            <div class="modal-content-minimized">
+                <div class="minimized-info">
+                    <span>Backup en cours...</span>
+                    <div class="minimized-progress">
+                        <div class="progress-bar-fill" id="progress-bar-minimized" style="width: 0%"></div>
+                    </div>
+                    <span id="progress-percentage-minimized">0%</span>
+                </div>
+                <button class="btn btn-sm" onclick="restoreBackupProgressModal()">Agrandir</button>
+            </div>
+        `;
+    }
+}
+
+// Restaurer la popup minimisée
+function restoreBackupProgressModal() {
+    const modal = document.getElementById('backup-progress-modal');
+    if (modal && window.currentBackupModal) {
+        modal.classList.remove('minimized');
+        // Recréer le contenu complet
+        showBackupProgressModal(
+            window.currentBackupModal.clientId, 
+            'Client', // On pourrait stocker le nom
+            'backup', // On pourrait stocker le type
+            window.currentBackupModal.backupId
+        );
+    }
+}
+
+// Confirmer l'annulation du backup
+function confirmCancelBackup(backupId) {
+    if (confirm('Êtes-vous sûr de vouloir annuler ce backup ?')) {
+        cancelBackup(backupId);
+    }
+}
+
+// Annuler un backup (à implémenter côté serveur)
+async function cancelBackup(backupId) {
+    try {
+        const response = await apiRequest(`${API_URL}/backups/cancel/${backupId}`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            showNotification('Backup annulé', 'info');
+            closeBackupProgressModal();
+        } else {
+            showNotification('Impossible d\'annuler le backup', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur lors de l\'annulation:', error);
+        showNotification('Erreur de connexion', 'error');
+    }
+}
+
+// Mettre à jour la popup modale de progression
+function updateBackupProgressModal(backupStatus) {
+    if (!window.currentBackupModal || window.currentBackupModal.backupId !== backupStatus.backupId) {
+        return; // Pas de popup ou backup différent
+    }
+    
+    const modal = document.getElementById('backup-progress-modal');
+    if (!modal) return;
+    
+    // Éléments de progression
+    const progressBar = document.getElementById('progress-bar-modal');
+    const progressPercentage = document.getElementById('progress-percentage-modal');
+    const progressStepText = document.getElementById('progress-step-modal');
+    const currentStep = document.getElementById('current-step-modal');
+    const currentFolder = document.getElementById('current-folder-modal');
+    const folderProgress = document.getElementById('folder-progress-modal');
+    
+    // Éléments minimisés
+    const progressBarMin = document.getElementById('progress-bar-minimized');
+    const progressPercentageMin = document.getElementById('progress-percentage-minimized');
+    
+    // Mettre à jour la progression
+    const progress = backupStatus.progress || 0;
+    const step = backupStatus.currentStep || 'En attente...';
+    
+    if (progressBar) progressBar.style.width = `${progress}%`;
+    if (progressPercentage) progressPercentage.textContent = `${progress}%`;
+    if (progressStepText) progressStepText.textContent = step;
+    if (currentStep) currentStep.textContent = step;
+    
+    // Mise à jour des détails si disponibles
+    if (backupStatus.details) {
+        if (currentFolder && backupStatus.details.currentFolder) {
+            currentFolder.textContent = backupStatus.details.currentFolder;
+        }
+        if (folderProgress && backupStatus.details.folderIndex && backupStatus.details.totalFolders) {
+            folderProgress.textContent = `${backupStatus.details.folderIndex}/${backupStatus.details.totalFolders}`;
         }
     }
+    
+    // Mettre à jour la version minimisée si elle existe
+    if (progressBarMin) progressBarMin.style.width = `${progress}%`;
+    if (progressPercentageMin) progressPercentageMin.textContent = `${progress}%`;
+    
+    // Si le backup est terminé ou en échec, fermer après 3 secondes
+    if (backupStatus.status === 'completed' || backupStatus.status === 'failed') {
+        const cancelBtn = document.getElementById('cancel-backup-btn');
+        if (cancelBtn) {
+            cancelBtn.style.display = 'none';
+        }
+        
+        // Afficher un message de fin
+        if (progressStepText) {
+            progressStepText.textContent = backupStatus.status === 'completed' 
+                ? '✅ Backup terminé avec succès!' 
+                : '❌ Backup échoué';
+        }
+        
+        // Fermer automatiquement après 5 secondes
+        setTimeout(() => {
+            closeBackupProgressModal();
+        }, 5000);
+    }
+}
+
+// Démarrer le monitoring en temps réel des backups
+let backupMonitoringInterval = null;
+
+function startBackupStatusMonitoring() {
+    if (backupMonitoringInterval) return; // Déjà actif
+    
+    backupMonitoringInterval = setInterval(async () => {
+        try {
+            const response = await apiRequest(`${API_URL}/backups/status`);
+            if (response.ok) {
+                const data = await response.json();
+                const runningBackups = data.data.runningBackups;
+                
+                // Mettre à jour chaque backup en cours
+                runningBackups.forEach(backup => {
+                    updateBackupStatus(backup.clientId, backup);
+                    // Mettre à jour la popup modale si elle est affichée
+                    updateBackupProgressModal(backup);
+                });
+                
+                // Arrêter le monitoring si aucun backup en cours
+                if (runningBackups.length === 0) {
+                    stopBackupStatusMonitoring();
+                }
+            }
+        } catch (error) {
+            console.warn('Erreur monitoring backups:', error);
+        }
+    }, 2000); // Toutes les 2 secondes
+    
+    console.log('Monitoring des backups démarré');
+}
+
+function stopBackupStatusMonitoring() {
+    if (backupMonitoringInterval) {
+        clearInterval(backupMonitoringInterval);
+        backupMonitoringInterval = null;
+        console.log('Monitoring des backups arrêté');
+    }
+}
+
+// Fonction de compatibilité (ancienne interface)
+async function startBackup(clientId) {
+    return startManualBackup(clientId);
 }
 
 function showAddClientModal() {
@@ -1073,43 +2225,242 @@ async function deleteClient(clientId) {
     }
 }
 
-function viewBackupDetails(clientName) {
-    // Afficher les détails du backup dans une fenêtre modale
+async function viewBackupDetails(backupId) {
+    // Créer la modale avec un indicateur de chargement
     const modal = document.createElement('div');
     modal.className = 'modal active';
     modal.innerHTML = `
         <div class="modal-content">
-            <h2>Détails du Backup - ${clientName}</h2>
-            <div style="margin: 1rem 0;">
-                <p><strong>Client:</strong> ${clientName}</p>
-                <p><strong>Type:</strong> Backup Complet</p>
-                <p><strong>Date:</strong> ${new Date().toLocaleString('fr-FR')}</p>
-                <p><strong>Taille:</strong> 12.5 GB</p>
-                <p><strong>Durée:</strong> 45 minutes</p>
-                <p><strong>Fichiers:</strong> 15,234 fichiers</p>
-                <p><strong>Chemin:</strong> /tmp/efc-backups-test/${clientName}</p>
-            </div>
-            <div style="margin: 1.5rem 0;">
-                <h3>Dossiers sauvegardés:</h3>
-                <ul style="margin-left: 1.5rem; color: var(--text-secondary);">
-                    <li>C:\\Users\\Documents</li>
-                    <li>C:\\Users\\Desktop</li>
-                    <li>C:\\Important</li>
-                </ul>
+            <h2>Détails du Backup</h2>
+            <div id="backup-details-content" style="margin: 1rem 0;">
+                <p>Chargement des détails...</p>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Fermer</button>
-                <button class="btn btn-primary" onclick="restoreBackup('${clientName}')">Restaurer</button>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
+
+    try {
+        // Charger les détails depuis l'API
+        const response = await fetch(`${API_URL}/backups`);
+        if (response.ok) {
+            const backups = await response.json();
+            const backup = backups.find(b => b.backup_id === backupId || b.client_name === backupId);
+            
+            if (backup) {
+                const detailsContent = document.getElementById('backup-details-content');
+                detailsContent.innerHTML = `
+                    <div>
+                        <p><strong>Client:</strong> ${backup.client_name || 'Inconnu'}</p>
+                        <p><strong>Type:</strong> ${backup.type === 'full' ? 'Complet' : 
+                                                   backup.type === 'incremental' ? 'Incrémentiel' : 
+                                                   backup.type || 'Non spécifié'}</p>
+                        <p><strong>Date:</strong> ${new Date(backup.created_at).toLocaleString('fr-FR')}</p>
+                        <p><strong>Taille:</strong> ${backup.size_mb ? `${(backup.size_mb / 1024).toFixed(1)} GB` : 'Non calculée'}</p>
+                        <p><strong>Durée:</strong> ${backup.duration || 'Non enregistrée'}</p>
+                        <p><strong>Statut:</strong> <span class="badge badge-${backup.status === 'completed' ? 'success' : 'danger'}">
+                            ${backup.status === 'completed' ? 'Réussi' : 'Échoué'}</span></p>
+                        <p><strong>ID Backup:</strong> ${backup.backup_id || 'Non spécifié'}</p>
+                        ${backup.error ? `<p><strong>Erreur:</strong> <span style="color: var(--danger-color);">${backup.error}</span></p>` : ''}
+                    </div>
+                    ${backup.status === 'completed' ? `
+                        <div style="margin: 1.5rem 0;">
+                            <h3>Informations supplémentaires:</h3>
+                            <p>Le backup est disponible pour restauration.</p>
+                            <div class="modal-actions" style="margin-top: 1rem;">
+                                <button class="btn btn-primary" onclick="restoreBackup('${backup.backup_id}', '${backup.client_name}')">
+                                    🔄 Restaurer
+                                </button>
+                                <button class="btn btn-secondary" onclick="downloadBackup('${backup.backup_id}')">
+                                    💾 Télécharger
+                                </button>
+                            </div>
+                        </div>
+                    ` : ''}
+                `;
+            } else {
+                document.getElementById('backup-details-content').innerHTML = `
+                    <div class="error-message">
+                        <span class="error-icon">❌</span>
+                        <p>Backup non trouvé dans la base de données.</p>
+                    </div>
+                `;
+            }
+        } else {
+            throw new Error('Erreur de chargement');
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des détails:', error);
+        document.getElementById('backup-details-content').innerHTML = `
+            <div class="error-message">
+                <span class="error-icon">❌</span>
+                <p>Impossible de charger les détails du backup.</p>
+                <button class="btn btn-primary" onclick="viewBackupDetails('${backupId}')">
+                    🔄 Réessayer
+                </button>
+            </div>
+        `;
+    }
 }
 
-function restoreBackup(clientName) {
-    if (confirm(`Voulez-vous restaurer le backup de ${clientName}?`)) {
-        showNotification(`Restauration du backup de ${clientName} démarrée`, 'success');
-        document.querySelector('.modal').remove();
+// Fonction utilitaire pour formater les tailles de fichiers
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function restoreBackup(backupId, clientName) {
+    // Créer le modal de restauration
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔄 Restaurer le Backup</h2>
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label><strong>Client:</strong> ${clientName}</label>
+                </div>
+                <div class="form-group">
+                    <label><strong>Backup ID:</strong> ${backupId}</label>
+                </div>
+                <div class="form-group">
+                    <label for="restore-destination">Dossier de destination:</label>
+                    <input type="text" id="restore-destination" class="form-control" 
+                           placeholder="/tmp/restore-backup-${Date.now()}" 
+                           value="/tmp/restore-backup-${Date.now()}">
+                    <small class="form-text">Le dossier sera créé automatiquement s'il n'existe pas</small>
+                </div>
+                <div class="form-group">
+                    <div class="form-check">
+                        <input type="checkbox" id="verify-restore" class="form-check-input" checked>
+                        <label for="verify-restore" class="form-check-label">
+                            Vérifier l'intégrité des fichiers restaurés
+                        </label>
+                    </div>
+                </div>
+                <div class="warning-message">
+                    <span class="warning-icon">⚠️</span>
+                    <strong>Attention:</strong> Cette opération va extraire tous les fichiers du backup 
+                    dans le dossier spécifié. Assurez-vous d'avoir suffisamment d'espace disque.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Annuler</button>
+                <button class="btn btn-primary" onclick="executeRestore('${backupId}', '${clientName}')">
+                    🔄 Lancer la Restauration
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'block';  // Rendre le modal visible
+}
+
+async function executeRestore(backupId, clientName) {
+    const destinationPath = document.getElementById('restore-destination').value.trim();
+    const verifyRestore = document.getElementById('verify-restore').checked;
+    
+    if (!destinationPath) {
+        showNotification('Veuillez spécifier un dossier de destination', 'error');
+        return;
+    }
+    
+    // Fermer le modal de sélection
+    document.querySelector('.modal').remove();
+    
+    // Créer le modal de progression
+    const progressModal = document.createElement('div');
+    progressModal.className = 'modal';
+    progressModal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔄 Restauration en cours...</h2>
+            </div>
+            <div class="modal-body">
+                <div class="progress-info">
+                    <p><strong>Client:</strong> ${clientName}</p>
+                    <p><strong>Destination:</strong> ${destinationPath}</p>
+                    <p><strong>Vérification:</strong> ${verifyRestore ? 'Activée' : 'Désactivée'}</p>
+                </div>
+                <div class="progress-spinner">
+                    <div class="spinner"></div>
+                    <p id="restore-status">Extraction des fichiers en cours...</p>
+                </div>
+                <div id="restore-logs" class="restore-logs" style="display: none;">
+                    <h4>Détails de la restauration:</h4>
+                    <div class="log-content"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Fermer</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(progressModal);
+    progressModal.style.display = 'block';  // Rendre le modal visible
+    
+    try {
+        const response = await fetch(`/api/backups/restore/${backupId}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                destinationPath,
+                verifyRestore
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok && result.restore_result.success) {
+            // Restauration réussie
+            document.getElementById('restore-status').innerHTML = `
+                ✅ <strong>Restauration terminée avec succès!</strong>
+            `;
+            
+            // Afficher les détails
+            const logContent = document.querySelector('#restore-logs .log-content');
+            logContent.innerHTML = `
+                <div class="success-summary">
+                    <p><strong>📁 Dossier de destination:</strong> ${result.destination}</p>
+                    <p><strong>📦 Fichiers extraits:</strong> ${result.restore_result.stats.filesExtracted}</p>
+                    <p><strong>⏱️ Durée:</strong> ${Math.round(result.restore_result.stats.duration / 1000)}s</p>
+                    ${result.restore_result.verification ? `
+                        <p><strong>✅ Vérification:</strong> ${result.restore_result.verification.verifiedFiles}/${result.restore_result.verification.totalFiles} fichiers OK</p>
+                        <p><strong>💾 Taille totale:</strong> ${formatBytes(result.restore_result.verification.totalSize)}</p>
+                        ${result.restore_result.verification.missingFiles.length > 0 ? 
+                            `<p class="text-warning"><strong>⚠️ Fichiers manquants:</strong> ${result.restore_result.verification.missingFiles.length}</p>` : ''}
+                        ${result.restore_result.verification.corruptedFiles.length > 0 ? 
+                            `<p class="text-error"><strong>❌ Fichiers corrompus:</strong> ${result.restore_result.verification.corruptedFiles.length}</p>` : ''}
+                    ` : ''}
+                </div>
+            `;
+            
+            document.getElementById('restore-logs').style.display = 'block';
+            showNotification(`Restauration de ${clientName} terminée avec succès vers ${result.destination}`, 'success');
+            
+        } else {
+            throw new Error(result.error || 'Erreur lors de la restauration');
+        }
+        
+    } catch (error) {
+        console.error('Erreur restauration:', error);
+        document.getElementById('restore-status').innerHTML = `
+            ❌ <strong>Erreur lors de la restauration:</strong> ${error.message}
+        `;
+        showNotification(`Erreur lors de la restauration: ${error.message}`, 'error');
     }
 }
 
@@ -1121,7 +2472,7 @@ function saveSettings() {
     };
     
     // Implémenter la sauvegarde des paramètres
-    console.log('Sauvegarder les paramètres:', settings);
+    // Sauvegarder les paramètres
     showNotification('Paramètres enregistrés', 'success');
 }
 
@@ -1134,7 +2485,7 @@ function clearLogs() {
 
 function filterBackups() {
     // Implémenter le filtrage des backups
-    console.log('Filtrer les backups');
+    // Filtrer les backups
 }
 
 function filterLogs() {
@@ -1145,8 +2496,7 @@ function filterLogs() {
 
 function updateDashboard() {
     if (currentSection === 'dashboard') {
-        updateStats();
-        loadRecentBackups();
+        loadDashboardData();
     }
 }
 
@@ -1325,41 +2675,11 @@ async function refreshNetworkData() {
     } catch (error) {
         console.error('Erreur lors de l\'actualisation des données réseau:', error);
         
-        // Générer des données simulées pour démonstration
-        const mockData = generateMockNetworkData();
-        updateNetworkCharts(mockData);
-        updateNetworkTable(mockData);
-        updateNetworkAnalysis(mockData);
-        
-        showNotification('Données simulées affichées (API non disponible)', 'warning');
+        // Afficher un message d'absence de données
+        showNoNetworkData();
     }
 }
 
-function generateMockNetworkData() {
-    const clients = ['Client-A', 'Client-B', 'Client-C', 'Serveur-Linux'];
-    const backupTypes = ['full', 'incremental', 'differential'];
-    const mockData = [];
-    
-    for (let i = 0; i < 10; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        
-        mockData.push({
-            backup_id: `backup_${Date.now()}_${i}`,
-            client_name: clients[Math.floor(Math.random() * clients.length)],
-            backup_type: backupTypes[Math.floor(Math.random() * backupTypes.length)],
-            bytes_transferred: Math.floor(Math.random() * 50000000000) + 1000000000, // 1GB à 50GB
-            transfer_speed_mbps: Math.floor(Math.random() * 100) + 10, // 10-110 Mbps
-            duration_seconds: Math.floor(Math.random() * 3600) + 300, // 5min à 1h
-            files_count: Math.floor(Math.random() * 50000) + 1000,
-            started_at: date.toISOString(),
-            completed_at: new Date(date.getTime() + Math.random() * 3600000).toISOString(),
-            created_at: date.toISOString()
-        });
-    }
-    
-    return mockData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-}
 
 function updateNetworkCharts(data) {
     const ctx1 = document.getElementById('speedChart').getContext('2d');
@@ -1820,18 +3140,51 @@ function updatePerformanceMetrics(data) {
     });
     document.getElementById('fastest-client').textContent = `${fastestClient} (${Math.round(fastestAvg)} Mbps)`;
     
-    // Tendance 7 jours (simulée)
-    const trend = Math.random() > 0.5 ? '📈 +5.2%' : '📉 -2.1%';
-    document.getElementById('trend-7days').textContent = trend;
+    // Tendance 7 jours basée sur les vraies données
+    if (data.length >= 7) {
+        const recent7Days = data.slice(0, 7);
+        const older7Days = data.slice(7, 14);
+        
+        if (older7Days.length > 0) {
+            const recentAvg = recent7Days.reduce((sum, d) => sum + (d.transfer_speed_mbps || 0), 0) / recent7Days.length;
+            const olderAvg = older7Days.reduce((sum, d) => sum + (d.transfer_speed_mbps || 0), 0) / older7Days.length;
+            const change = ((recentAvg - olderAvg) / olderAvg * 100).toFixed(1);
+            const trend = change >= 0 ? `📈 +${change}%` : `📉 ${change}%`;
+            document.getElementById('trend-7days').textContent = trend;
+        } else {
+            document.getElementById('trend-7days').textContent = '➖ Données insuffisantes';
+        }
+    } else {
+        document.getElementById('trend-7days').textContent = '➖ Données insuffisantes';
+    }
 }
 
 // Fonction pour les métriques temps réel
-function updateRealtimeMetrics() {
-    // Simuler des données temps réel
-    document.getElementById('active-backup').textContent = Math.random() > 0.8 ? 'TestClient-A' : 'Aucun';
-    document.getElementById('backup-queue').textContent = Math.floor(Math.random() * 5);
-    document.getElementById('active-connections').textContent = Math.floor(Math.random() * 3);
-    document.getElementById('bandwidth-usage').textContent = `${Math.floor(Math.random() * 50)} Mbps`;
+async function updateRealtimeMetrics() {
+    try {
+        const response = await fetch('/api/dashboard/realtime');
+        if (response.ok) {
+            const data = await response.json();
+            
+            document.getElementById('active-backup').textContent = data.activeBackup || 'Aucun';
+            document.getElementById('backup-queue').textContent = data.queueLength || 0;
+            document.getElementById('active-connections').textContent = data.activeConnections || 0;
+            document.getElementById('bandwidth-usage').textContent = data.bandwidth || '0 Mbps';
+        } else {
+            // Valeurs par défaut si l'API échoue
+            document.getElementById('active-backup').textContent = 'Aucun';
+            document.getElementById('backup-queue').textContent = '0';
+            document.getElementById('active-connections').textContent = '0';
+            document.getElementById('bandwidth-usage').textContent = '0 Mbps';
+        }
+    } catch (error) {
+        console.warn('Erreur chargement métriques temps réel:', error);
+        // Valeurs par défaut en cas d'erreur
+        document.getElementById('active-backup').textContent = 'Aucun';
+        document.getElementById('backup-queue').textContent = '0';
+        document.getElementById('active-connections').textContent = '0';
+        document.getElementById('bandwidth-usage').textContent = '0 Mbps';
+    }
 }
 
 // Fonction pour l'analyse des problèmes
@@ -1909,9 +3262,24 @@ function updateExecutiveSummary(data) {
     const avgDuration = data.reduce((sum, d) => sum + (d.duration_seconds || 0), 0) / data.length;
     document.getElementById('avg-duration').textContent = `${Math.round(avgDuration / 60)}min`;
     
-    // Croissance des données (simulée)
-    const growth = ['+12%', '+8%', '-3%', '+15%', '+5%'][Math.floor(Math.random() * 5)];
-    document.getElementById('data-growth').textContent = growth;
+    // Croissance des données basée sur les vrais historiques
+    if (data.length >= 14) {
+        const recent7Days = data.slice(0, 7);
+        const older7Days = data.slice(7, 14);
+        
+        const recentTotal = recent7Days.reduce((sum, d) => sum + (d.bytes_transferred || 0), 0);
+        const olderTotal = older7Days.reduce((sum, d) => sum + (d.bytes_transferred || 0), 0);
+        
+        if (olderTotal > 0) {
+            const growthPercent = ((recentTotal - olderTotal) / olderTotal * 100).toFixed(1);
+            const growth = growthPercent >= 0 ? `+${growthPercent}%` : `${growthPercent}%`;
+            document.getElementById('data-growth').textContent = growth;
+        } else {
+            document.getElementById('data-growth').textContent = '➖ N/A';
+        }
+    } else {
+        document.getElementById('data-growth').textContent = '➖ Données insuffisantes';
+    }
     
     // Mettre à jour les couleurs des KPIs selon les valeurs
     const healthColor = avgSpeed > 30 ? '#5d8052' : avgSpeed > 20 ? '#f39c12' : '#e74c3c';
@@ -1940,8 +3308,149 @@ async function checkAuthStatus() {
     }
 }
 
+// Charger les permissions utilisateur
+async function loadUserPermissions() {
+    try {
+        const response = await apiRequest(`${API_URL}/user/permissions`);
+        if (response.ok) {
+            const data = await response.json();
+            userPermissions = data.data;
+            console.log('Permissions utilisateur chargées:', userPermissions);
+            
+            // Adapter l'interface selon les permissions
+            adaptInterfaceForPermissions();
+        } else {
+            console.error('Erreur chargement permissions:', response.status);
+            // En cas d'erreur, masquer tout par défaut sauf dashboard
+            userPermissions = {
+                role: 'client',
+                permissions: ['dashboard_view'],
+                clientAccess: { canViewAll: false, allowedClients: [] }
+            };
+            adaptInterfaceForPermissions();
+        }
+    } catch (error) {
+        console.error('Erreur chargement permissions:', error);
+        userPermissions = {
+            role: 'client',
+            permissions: ['dashboard_view'],
+            clientAccess: { canViewAll: false, allowedClients: [] }
+        };
+        adaptInterfaceForPermissions();
+    }
+}
+
+// Adapter l'interface selon les permissions
+function adaptInterfaceForPermissions() {
+    if (!userPermissions) return;
+    
+    // Définir les permissions requises pour chaque section/menu
+    const sectionPermissions = {
+        'dashboard': 'dashboard_view',
+        'clients': 'clients_view',
+        'backups': 'backups_view',
+        'schedule': 'backups_schedule',
+        'logs': 'logs_view',
+        'users': 'users_view',
+        'config': 'settings_view',
+        'ssl': 'ssl_manage',
+        'network': 'metrics_view',
+        'maintenance': 'settings_edit',
+        'system': 'system_monitor',
+        'settings': 'settings_view'
+    };
+    
+    // Masquer/afficher les éléments de navigation
+    const navLinks = document.querySelectorAll('.nav-menu a');
+    navLinks.forEach(link => {
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) {
+            const section = href.substring(1);
+            const requiredPermission = sectionPermissions[section];
+            
+            if (requiredPermission && !hasPermission(requiredPermission)) {
+                link.parentElement.style.display = 'none';
+            } else {
+                link.parentElement.style.display = 'block';
+            }
+        }
+    });
+    
+    // Masquer les sections elles-mêmes
+    Object.keys(sectionPermissions).forEach(section => {
+        const sectionElement = document.getElementById(`${section}-section`);
+        const requiredPermission = sectionPermissions[section];
+        
+        if (sectionElement && requiredPermission && !hasPermission(requiredPermission)) {
+            sectionElement.style.display = 'none';
+        }
+    });
+    
+    // Masquer les boutons d'action selon les permissions
+    adaptActionButtonsForPermissions();
+}
+
+// Vérifier si l'utilisateur a une permission
+function hasPermission(permission) {
+    if (!userPermissions) return false;
+    
+    // Les admins ont toutes les permissions
+    if (userPermissions.role === 'admin') return true;
+    
+    // Vérifier dans la liste des permissions
+    return userPermissions.permissions && userPermissions.permissions.includes(permission);
+}
+
+// Adapter les boutons d'action selon les permissions
+function adaptActionButtonsForPermissions() {
+    // Masquer bouton "Ajouter Client" si pas de permission
+    if (!hasPermission('clients_create')) {
+        const addClientBtn = document.querySelector('button[onclick="showAddClientModal()"]');
+        if (addClientBtn) addClientBtn.style.display = 'none';
+    }
+    
+    // Masquer boutons de modification/suppression clients
+    if (!hasPermission('clients_edit')) {
+        document.querySelectorAll('.client-actions .btn-warning').forEach(btn => {
+            if (btn.onclick && btn.onclick.toString().includes('editClient')) {
+                btn.style.display = 'none';
+            }
+        });
+    }
+    
+    if (!hasPermission('clients_delete')) {
+        document.querySelectorAll('.client-actions .btn-danger').forEach(btn => {
+            if (btn.onclick && btn.onclick.toString().includes('deleteClient')) {
+                btn.style.display = 'none';
+            }
+        });
+    }
+    
+    // Adapter selon le rôle client - ne montrer que ses propres données
+    if (userPermissions.role === 'client' && !userPermissions.clientAccess.canViewAll) {
+        adaptForClientRole();
+    }
+}
+
+// Adapter l'interface pour un utilisateur client
+function adaptForClientRole() {
+    // Masquer les statistiques globales et ne montrer que les siennes
+    // Cette fonction sera appelée après le chargement des données
+    console.log('Mode client activé - accès restreint aux données personnelles');
+}
+
 function setupUserInterface() {
     if (!currentUser) return;
+    
+    // Gérer l'affichage du bouton de restauration rapide selon le rôle
+    const quickRestoreBtn = document.getElementById('quick-restore-btn-dashboard');
+    if (quickRestoreBtn) {
+        if (userPermissions && userPermissions.role === 'admin') {
+            quickRestoreBtn.style.display = 'inline-block';
+        } else {
+            quickRestoreBtn.style.display = 'none';
+        }
+    }
     
     // Afficher les informations utilisateur
     const header = document.querySelector('.header');
@@ -2912,20 +4421,20 @@ async function exportUsers() {
 // Fonctions pour le changement de mot de passe utilisateur
 function openPasswordModal() {
     try {
-        console.log('Tentative d\'ouverture du modal mot de passe');
+        // Tentative d'ouverture du modal mot de passe
         
         const modal = document.getElementById('password-modal');
-        console.log('Modal trouvé:', modal);
+        // Modal trouvé
         
         if (modal) {
             modal.style.display = 'block';
-            console.log('Modal affiché');
+            // Modal affiché
             
             // Réinitialiser le formulaire
             const form = document.getElementById('password-form');
             if (form) {
                 form.reset();
-                console.log('Formulaire réinitialisé');
+                // Formulaire réinitialisé
             }
             
             // Focus sur le premier champ
@@ -2933,7 +4442,7 @@ function openPasswordModal() {
             if (currentPasswordField) {
                 setTimeout(() => {
                     currentPasswordField.focus();
-                    console.log('Focus mis sur le champ mot de passe actuel');
+                    // Focus mis sur le champ mot de passe actuel
                 }, 100);
             }
         } else {
@@ -2968,13 +4477,6 @@ async function changeUserPassword() {
         const currentPassword = currentPasswordField.value.trim();
         const newPassword = newPasswordField.value.trim();
         const confirmPassword = confirmPasswordField.value.trim();
-
-        // Debug pour diagnostiquer le problème
-        console.log('Valeurs des champs:', {
-            currentPassword: `"${currentPassword}"`,
-            newPassword: `"${newPassword}"`,
-            confirmPassword: `"${confirmPassword}"`
-        });
 
         // Validation côté client
         if (!currentPassword || !newPassword || !confirmPassword) {
@@ -3067,4 +4569,345 @@ function showPasswordChangeInterface() {
     `;
     
     return passwordSection;
+}
+
+// === FONCTIONS MAINTENANCE === 
+
+// Journal de maintenance
+function addMaintenanceLog(level, message) {
+    const logContent = document.getElementById('maintenance-log-content');
+    if (!logContent) return;
+    
+    const timestamp = new Date().toLocaleString();
+    const logLine = document.createElement('div');
+    logLine.className = 'log-line';
+    
+    logLine.innerHTML = `
+        <span class="log-timestamp">[${timestamp}]</span>
+        <span class="log-level ${level}">${level.toUpperCase()}</span>
+        <span class="log-message">${message}</span>
+    `;
+    
+    logContent.appendChild(logLine);
+    logContent.scrollTop = logContent.scrollHeight;
+}
+
+// Health Check
+async function runHealthCheck() {
+    addMaintenanceLog('info', 'Démarrage du health check système...');
+    
+    const healthResults = document.getElementById('health-results');
+    const resultsContent = healthResults.querySelector('.results-content');
+    
+    try {
+        const response = await fetch('/api/system/health-check', { method: 'POST' });
+        const data = await response.json();
+        
+        healthResults.style.display = 'block';
+        resultsContent.innerHTML = generateHealthCheckResults(data);
+        
+        addMaintenanceLog('success', 'Health check terminé avec succès');
+    } catch (error) {
+        addMaintenanceLog('error', `Erreur health check: ${error.message}`);
+        resultsContent.innerHTML = `<div class="status-indicator error">❌ Erreur: ${error.message}</div>`;
+    }
+}
+
+function generateHealthCheckResults(data) {
+    if (!data || typeof data !== 'object') {
+        return '<div class="status-indicator error">❌ Données invalides reçues</div>';
+    }
+    
+    let html = '<div class="health-check-results">';
+    
+    const overallStatus = data.overall || 'unknown';
+    const statusClass = overallStatus === 'healthy' ? 'success' : 
+                       overallStatus === 'warning' ? 'warning' : 'error';
+    
+    html += `
+        <div class="overall-status">
+            <h4>État Global</h4>
+            <div class="status-indicator ${statusClass}">
+                ${overallStatus === 'healthy' ? '✅' : overallStatus === 'warning' ? '⚠️' : '❌'}
+                ${overallStatus.toUpperCase()}
+            </div>
+        </div>
+    `;
+    
+    const components = ['database', 'diskSpace', 'memory', 'clients', 'scheduler', 'backups'];
+    
+    html += '<div class="component-status">';
+    for (const component of components) {
+        if (data[component]) {
+            const comp = data[component];
+            const compClass = comp.status === 'healthy' ? 'success' : 
+                            comp.status === 'warning' ? 'warning' : 'error';
+            
+            html += `
+                <div class="component-item">
+                    <strong>${component}:</strong>
+                    <div class="status-indicator ${compClass}">
+                        ${comp.status === 'healthy' ? '✅' : comp.status === 'warning' ? '⚠️' : '❌'}
+                        ${comp.message || comp.status}
+                    </div>
+                </div>
+            `;
+        }
+    }
+    html += '</div>';
+    
+    html += '</div>';
+    return html;
+}
+
+async function runCleanup() {
+    addMaintenanceLog('info', 'Démarrage du nettoyage système...');
+    
+    const cleanupResults = document.getElementById('cleanup-results');
+    const resultsContent = cleanupResults.querySelector('.results-content');
+    
+    try {
+        const response = await fetch('/api/system/cleanup', { method: 'POST' });
+        const data = await response.json();
+        
+        cleanupResults.style.display = 'block';
+        resultsContent.innerHTML = generateCleanupResults(data);
+        
+        addMaintenanceLog('success', 'Nettoyage terminé avec succès');
+    } catch (error) {
+        addMaintenanceLog('error', `Erreur nettoyage: ${error.message}`);
+        resultsContent.innerHTML = `<div class="status-indicator error">❌ Erreur: ${error.message}</div>`;
+    }
+}
+
+function generateCleanupResults(data) {
+    return `
+        <div class="cleanup-results">
+            <div class="stat-item">
+                <span>Backups supprimés:</span>
+                <span>${data.backupsDeleted || 0}</span>
+            </div>
+            <div class="stat-item">
+                <span>Logs supprimés:</span>
+                <span>${data.logsDeleted || 0}</span>
+            </div>
+            <div class="stat-item">
+                <span>Espace libéré:</span>
+                <span>${data.spaceFreed || '0 MB'}</span>
+            </div>
+        </div>
+    `;
+}
+
+async function testAllConnections() {
+    addMaintenanceLog('info', 'Test de toutes les connexions clients...');
+    
+    const connectionResults = document.getElementById('connection-results');
+    const resultsContent = connectionResults.querySelector('.results-content');
+    
+    try {
+        const response = await fetch('/api/test-connections', { method: 'POST' });
+        const data = await response.json();
+        
+        connectionResults.style.display = 'block';
+        resultsContent.innerHTML = generateConnectionResults(data);
+        
+        addMaintenanceLog('success', 'Tests de connexion terminés');
+    } catch (error) {
+        addMaintenanceLog('error', `Erreur test connexions: ${error.message}`);
+    }
+}
+
+function generateConnectionResults(data) {
+    if (!data.results) return '<div class="status-indicator error">❌ Aucun résultat</div>';
+    
+    let html = '<div class="connection-test-results">';
+    
+    for (const result of data.results) {
+        const statusClass = result.success ? 'success' : 'error';
+        const icon = result.success ? '✅' : '❌';
+        
+        html += `
+            <div class="connection-item">
+                <div class="status-indicator ${statusClass}">
+                    ${icon} ${result.client}
+                </div>
+                <div class="connection-details">
+                    ${result.success ? 
+                        `Connecté en ${result.duration}ms` : 
+                        `Erreur: ${result.error}`
+                    }
+                </div>
+            </div>
+        `;
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+async function runErrorHandlingTests() {
+    addMaintenanceLog('info', 'Exécution des tests de gestion d\'erreurs...');
+    
+    const errorResults = document.getElementById('error-test-results');
+    const resultsContent = errorResults.querySelector('.results-content');
+    
+    try {
+        const response = await fetch('/api/system/test-error-handling', { method: 'POST' });
+        const data = await response.json();
+        
+        errorResults.style.display = 'block';
+        resultsContent.innerHTML = generateErrorTestResults(data);
+        
+        addMaintenanceLog('success', 'Tests de gestion d\'erreur terminés');
+    } catch (error) {
+        addMaintenanceLog('error', `Erreur tests retry: ${error.message}`);
+    }
+}
+
+function generateErrorTestResults(data) {
+    if (!data.results) return '<div class="status-indicator error">❌ Aucun résultat de test</div>';
+    
+    let html = '<div class="error-test-results">';
+    let passed = 0;
+    let total = data.results.length;
+    
+    for (const result of data.results) {
+        const statusClass = result.success ? 'success' : 'error';
+        const icon = result.success ? '✅' : '❌';
+        
+        if (result.success) passed++;
+        
+        html += `
+            <div class="test-item">
+                <div class="status-indicator ${statusClass}">
+                    ${icon} ${result.name}
+                </div>
+                <div class="test-details">
+                    ${result.message}
+                </div>
+            </div>
+        `;
+    }
+    
+    html += `
+        <div class="test-summary">
+            <strong>Résultats: ${passed}/${total} tests réussis (${Math.round((passed/total)*100)}%)</strong>
+        </div>
+    </div>`;
+    
+    return html;
+}
+
+function clearMaintenanceLog() {
+    const logContent = document.getElementById('maintenance-log-content');
+    if (logContent) {
+        logContent.innerHTML = '';
+        addMaintenanceLog('info', 'Journal de maintenance vidé');
+    }
+}
+
+function downloadMaintenanceLog() {
+    const logContent = document.getElementById('maintenance-log-content');
+    if (!logContent) return;
+    
+    const logs = Array.from(logContent.children).map(line => {
+        const timestamp = line.querySelector('.log-timestamp')?.textContent || '';
+        const level = line.querySelector('.log-level')?.textContent || '';
+        const message = line.querySelector('.log-message')?.textContent || '';
+        return `${timestamp} ${level} ${message}`;
+    }).join('\n');
+    
+    const blob = new Blob([logs], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maintenance-log-${new Date().toISOString().slice(0,10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    addMaintenanceLog('info', 'Journal de maintenance téléchargé');
+}
+
+// Autres fonctions utilitaires
+async function viewHealthResults() { 
+    const healthResults = document.getElementById('health-results');
+    healthResults.style.display = healthResults.style.display === 'none' ? 'block' : 'none';
+}
+async function estimateCleanup() {
+    addMaintenanceLog('info', 'Estimation de l\'espace libérable...');
+    document.getElementById('cleanable-space').textContent = 'Calcul...';
+}
+async function testFailedConnections() { 
+    addMaintenanceLog('info', 'Test des connexions échouées...'); 
+}
+async function viewRetryLogs() { 
+    addMaintenanceLog('info', 'Affichage des logs de retry...'); 
+}
+async function reloadSchedules() { 
+    addMaintenanceLog('info', 'Rechargement des planifications...'); 
+}
+async function validateSchedules() { 
+    addMaintenanceLog('info', 'Validation des planifications...'); 
+}
+async function restartServices() { 
+    addMaintenanceLog('warning', 'Redémarrage des services...'); 
+}
+async function optimizeDatabase() { 
+    addMaintenanceLog('info', 'Optimisation de la base de données...'); 
+}
+async function generateMaintenanceReport() { 
+    addMaintenanceLog('info', 'Génération du rapport de maintenance...'); 
+}
+
+// Fonction pour télécharger un backup
+async function downloadBackup(backupId) {
+    try {
+        // Utiliser fetch direct pour le téléchargement de fichier avec authentification par session
+        const response = await fetch(`/api/backups/download/${backupId}`, {
+            method: 'GET',
+            credentials: 'include'  // Utiliser les cookies de session comme les autres requêtes
+        });
+        
+        if (!response.ok) {
+            let errorMessage = 'Erreur lors du téléchargement';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.message || errorMessage;
+            } catch (e) {
+                // Si la réponse n'est pas du JSON, utiliser le status text
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
+        }
+        
+        // Récupérer le nom du fichier depuis les headers
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `backup-${backupId}.tar.gz`;
+        
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+            if (filenameMatch) {
+                filename = filenameMatch[1];
+            }
+        }
+        
+        // Convertir en blob et créer le lien de téléchargement
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        
+        showNotification('Téléchargement du backup lancé', 'success');
+    } catch (error) {
+        console.error('Erreur lors du téléchargement:', error);
+        showNotification(`Erreur lors du téléchargement: ${error.message}`, 'error');
+    }
 }

@@ -4,7 +4,8 @@ const { logger, getRecentLogs, getClientLogs, getClientsWithLogs, getLogStats } 
 const { 
     addClient, 
     getClients, 
-    getClient, 
+    getClient,
+    getClientByName, 
     updateClient, 
     deleteClient,
     getBackups,
@@ -15,7 +16,8 @@ const {
     getSetting,
     setSetting,
     getNetworkStats,
-    getNetworkStatsByClient
+    getNetworkStatsByClient,
+    db
 } = require('../utils/database');
 const backupScheduler = require('../backup/scheduler');
 const systemMonitor = require('../monitor/systemMonitor');
@@ -371,8 +373,18 @@ router.get('/logs/stats', AuthMiddleware.authenticateToken, async (req, res) => 
 // Routes pour logs spécifiques aux clients
 router.get('/logs/clients', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
-        const clients = getClientsWithLogs();
-        res.json(clients);
+        // Récupérer tous les clients de la base de données
+        const allClients = await getClients();
+        const clientNames = allClients.map(client => client.name);
+        
+        // Optionnellement, on pourrait marquer lesquels ont des logs existants
+        // const clientsWithLogs = getClientsWithLogs();
+        // const clientList = clientNames.map(name => ({
+        //     name: name,
+        //     hasLogs: clientsWithLogs.includes(name)
+        // }));
+        
+        res.json(clientNames);
     } catch (error) {
         logger.error('Erreur API get clients with logs:', error);
         res.status(500).json({ error: 'Erreur lors de la récupération des clients avec logs' });
@@ -389,8 +401,28 @@ router.get('/logs/clients/:clientName', AuthMiddleware.requireClientAccess, asyn
             logType: req.query.type || 'client'
         };
 
+        // Vérifier que le client existe dans la base de données
+        const client = await getClientByName(clientName);
+        if (!client) {
+            return res.status(404).json({ error: 'Client non trouvé' });
+        }
+
         const logs = await getClientLogs(clientName, options);
-        res.json(logs);
+        
+        // Si aucun log n'existe pour ce client, retourner un message informatif
+        if (logs.length === 0) {
+            const noLogsMessage = {
+                timestamp: new Date().toISOString(),
+                level: 'info',
+                message: `Aucun log disponible pour le client ${clientName}. Les logs apparaîtront lors de la première activité (connexion, backup, etc.)`,
+                clientName: clientName,
+                backupId: null,
+                logType: options.logType
+            };
+            res.json([noLogsMessage]);
+        } else {
+            res.json(logs);
+        }
     } catch (error) {
         logger.error(`Erreur API get client logs ${req.params.clientName}:`, error);
         res.status(500).json({ error: 'Erreur lors de la récupération des logs du client' });
@@ -867,6 +899,7 @@ router.post('/backups/start/:clientId', AuthMiddleware.authenticateToken, async 
         const backupScheduler = require('../backup/scheduler');
         const backupId = await backupScheduler.startManualBackupForClient(clientId, {
             type: req.body.type || 'full',
+            createImage: req.body.createImage || false,
             triggered_by: req.user.username
         });
         
@@ -900,11 +933,11 @@ router.get('/backups/download/:backupId', AuthMiddleware.authenticateToken, asyn
         const backupId = req.params.backupId;
         
         // Vérifier les permissions de téléchargement de backup
-        logger.info(`Vérification permission backups_view pour utilisateur ${req.user.id} (${req.user.username})`);
+        logger.info(`Vérification permission backups_view pour utilisateur ${req.user.id} (${req.user.username}) - rôle: ${req.user.role}`);
         const hasPermission = await permissionManager.hasPermission(req.user.id, 'backups_view');
         logger.info(`Permission backups_view: ${hasPermission}`);
         if (!hasPermission) {
-            logger.warn(`Accès refusé - permission backups_view manquante pour ${req.user.username}`);
+            logger.warn(`Accès refusé - permission backups_view manquante pour ${req.user.username} (rôle: ${req.user.role})`);
             return res.status(403).json({ error: 'Permission insuffisante pour télécharger un backup' });
         }
         
@@ -985,6 +1018,216 @@ router.get('/backups/download/:backupId', AuthMiddleware.authenticateToken, asyn
     } catch (error) {
         logger.error('Erreur téléchargement backup:', error);
         res.status(500).json({ error: 'Erreur lors du téléchargement du backup' });
+    }
+});
+
+// Fonction pour effectuer la restauration d'un backup
+async function performRestore(backup, destinationDir, verifyRestore) {
+    const fs = require('fs');
+    const path = require('path');
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execAsync = promisify(exec);
+    
+    const result = {
+        success: false,
+        extractedFiles: [],
+        errors: [],
+        verification: null,
+        stats: {
+            startTime: new Date().toISOString(),
+            endTime: null,
+            duration: null,
+            filesExtracted: 0,
+            totalSize: 0
+        }
+    };
+    
+    try {
+        logger.info(`Début restauration: ${backup.backup_id} vers ${destinationDir}`);
+        
+        // Déterminer le type de backup (tar.gz pour Linux)
+        const backupPath = backup.path;
+        const isLinuxBackup = backup.client_name.includes('Linux') || backupPath.endsWith('.tar.gz');
+        
+        if (isLinuxBackup) {
+            // Restauration Linux avec tar
+            const tarCommand = `tar -xzf "${backupPath}" -C "${destinationDir}" --verbose`;
+            logger.info(`Exécution commande: ${tarCommand}`);
+            
+            const { stdout, stderr } = await execAsync(tarCommand);
+            
+            if (stderr && !stderr.includes('Removing leading')) {
+                result.errors.push(`Avertissements tar: ${stderr}`);
+                logger.warn(`Avertissements lors de l'extraction:`, stderr);
+            }
+            
+            // Parser la sortie pour compter les fichiers extraits
+            if (stdout) {
+                const extractedLines = stdout.split('\n').filter(line => line.trim() && !line.includes('Removing leading'));
+                result.extractedFiles = extractedLines.map(line => line.trim());
+                result.stats.filesExtracted = extractedLines.length;
+                logger.info(`${result.stats.filesExtracted} fichiers extraits`);
+            }
+            
+        } else {
+            // Pour les backups Windows, implémenter l'extraction ZIP si nécessaire
+            throw new Error('Type de backup non supporté pour la restauration automatique');
+        }
+        
+        result.stats.endTime = new Date().toISOString();
+        result.stats.duration = new Date(result.stats.endTime) - new Date(result.stats.startTime);
+        result.success = true;
+        
+        // Vérification optionnelle des fichiers restaurés
+        if (verifyRestore && result.success) {
+            logger.info('Vérification des fichiers restaurés...');
+            result.verification = await verifyRestoredFiles(destinationDir, result.extractedFiles);
+        }
+        
+        logger.info(`Restauration terminée avec succès: ${result.stats.filesExtracted} fichiers en ${result.stats.duration}ms`);
+        
+    } catch (error) {
+        result.success = false;
+        result.errors.push(`Erreur lors de l'extraction: ${error.message}`);
+        result.stats.endTime = new Date().toISOString();
+        result.stats.duration = new Date(result.stats.endTime) - new Date(result.stats.startTime);
+        logger.error('Erreur lors de la restauration:', error);
+    }
+    
+    return result;
+}
+
+// Fonction pour vérifier que les fichiers ont bien été restaurés
+async function verifyRestoredFiles(destinationDir, extractedFilesList) {
+    const fs = require('fs');
+    const path = require('path');
+    
+    const verification = {
+        totalFiles: extractedFilesList.length,
+        verifiedFiles: 0,
+        missingFiles: [],
+        corruptedFiles: [],
+        totalSize: 0,
+        success: false
+    };
+    
+    try {
+        logger.info(`Vérification de ${verification.totalFiles} fichiers dans ${destinationDir}`);
+        
+        for (const relativePath of extractedFilesList) {
+            const fullPath = path.join(destinationDir, relativePath);
+            
+            try {
+                if (fs.existsSync(fullPath)) {
+                    const stats = fs.statSync(fullPath);
+                    if (stats.isFile()) {
+                        verification.totalSize += stats.size;
+                    }
+                    verification.verifiedFiles++;
+                } else {
+                    verification.missingFiles.push(relativePath);
+                    logger.warn(`Fichier manquant après restauration: ${relativePath}`);
+                }
+            } catch (error) {
+                verification.corruptedFiles.push(relativePath);
+                logger.warn(`Erreur accès fichier: ${relativePath} - ${error.message}`);
+            }
+        }
+        
+        verification.success = verification.missingFiles.length === 0 && verification.corruptedFiles.length === 0;
+        
+        logger.info(`Vérification terminée: ${verification.verifiedFiles}/${verification.totalFiles} fichiers OK, ${verification.missingFiles.length} manquants, ${verification.corruptedFiles.length} corrompus`);
+        
+    } catch (error) {
+        verification.success = false;
+        logger.error('Erreur lors de la vérification:', error);
+    }
+    
+    return verification;
+}
+
+// Route pour restaurer un backup
+router.post('/backups/restore/:backupId', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { permissionManager } = require('../utils/permissions');
+        const backupId = req.params.backupId;
+        const { destinationPath, verifyRestore = true } = req.body;
+        
+        // Vérifier les permissions de restauration
+        logger.info(`Vérification permission backups_restore pour utilisateur ${req.user.id} (${req.user.username}) - rôle: ${req.user.role}`);
+        const hasPermission = await permissionManager.hasPermission(req.user.id, 'backups_restore');
+        logger.info(`Permission backups_restore: ${hasPermission}`);
+        if (!hasPermission) {
+            logger.warn(`Accès refusé - permission backups_restore manquante pour ${req.user.username} (rôle: ${req.user.role})`);
+            return res.status(403).json({ error: 'Permission insuffisante pour restaurer un backup' });
+        }
+        
+        // Récupérer les informations du backup
+        const backup = await db.get('SELECT * FROM backups WHERE backup_id = ?', [backupId]);
+        if (!backup) {
+            logger.warn(`Backup non trouvé: ${backupId}`);
+            return res.status(404).json({ error: 'Backup non trouvé' });
+        }
+        
+        logger.info(`Backup trouvé pour restauration: ${backup.client_name}, status: ${backup.status}`);
+        
+        // Vérifier les permissions client
+        const clientPermissions = await permissionManager.getClientPermissions(req.user.id);
+        logger.info(`Permissions client pour ${req.user.username}:`, clientPermissions);
+        
+        if (req.user.role !== 'admin' && !clientPermissions.canViewAll) {
+            if (!clientPermissions.allowedClients.includes(backup.client_name)) {
+                logger.warn(`Accès refusé - client ${backup.client_name} non autorisé pour ${req.user.username}`);
+                return res.status(403).json({ error: 'Accès non autorisé à ce backup' });
+            }
+        }
+        
+        // Vérifier que le backup est terminé avec succès
+        if (backup.status !== 'completed') {
+            return res.status(400).json({ error: 'Le backup n\'est pas disponible pour restauration' });
+        }
+        
+        // Vérifier que le fichier existe
+        const fs = require('fs');
+        const path = require('path');
+        
+        let filePath = backup.path;
+        if (!filePath) {
+            return res.status(404).json({ error: 'Chemin du fichier backup non trouvé' });
+        }
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Fichier backup non trouvé sur le disque' });
+        }
+        
+        // Valider le chemin de destination
+        if (!destinationPath) {
+            return res.status(400).json({ error: 'Chemin de destination requis' });
+        }
+        
+        // Créer le dossier de destination s'il n'existe pas
+        const destinationDir = path.resolve(destinationPath);
+        if (!fs.existsSync(destinationDir)) {
+            fs.mkdirSync(destinationDir, { recursive: true });
+        }
+        
+        // Effectuer la restauration
+        const restoreResult = await performRestore(backup, destinationDir, verifyRestore);
+        
+        logger.info(`Restauration effectuée: ${backupId} vers ${destinationDir} par ${req.user.username}`);
+        
+        res.json({
+            backup_id: backupId,
+            destination: destinationDir,
+            restore_result: restoreResult,
+            restored_at: new Date().toISOString(),
+            restored_by: req.user.username
+        });
+        
+    } catch (error) {
+        logger.error('Erreur restauration backup:', error);
+        res.status(500).json({ error: 'Erreur lors de la restauration du backup' });
     }
 });
 

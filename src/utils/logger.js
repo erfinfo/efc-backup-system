@@ -391,6 +391,9 @@ const getClientLogs = async (clientName, options = {}) => {
             if (logs.length >= limit) break;
 
             try {
+                // Ignorer les lignes vides
+                if (!line.trim()) continue;
+                
                 const logEntry = JSON.parse(line);
                 
                 // Filtrer par niveau si spécifié
@@ -412,7 +415,8 @@ const getClientLogs = async (clientName, options = {}) => {
                     logType: logType
                 });
             } catch (e) {
-                // Ignorer les lignes mal formées
+                // Log l'erreur de parsing pour debugging
+                console.error(`Erreur parsing ligne log pour ${clientName}:`, line, e.message);
                 continue;
             }
         }
