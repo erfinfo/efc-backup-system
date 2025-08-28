@@ -23,9 +23,11 @@ const backupScheduler = require('../backup/scheduler');
 const systemMonitor = require('../monitor/systemMonitor');
 const { testNotificationConfig } = require('../utils/notification');
 const AuthMiddleware = require('../middleware/auth');
+const i18n = require('../utils/i18n-server');
 
 // Middleware pour les logs d'API et sécurité
 router.use(AuthMiddleware.securityLogger);
+router.use(i18n.middleware());
 router.use((req, res, next) => {
     const start = Date.now();
     
@@ -108,7 +110,7 @@ router.post('/clients', AuthMiddleware.requireAdmin, async (req, res) => {
         const { name, host, port, username, password, folders, backup_type, os_type } = req.body;
         
         if (!name || !host || !username || !password) {
-            return res.status(400).json({ error: 'Champs obligatoires manquants' });
+            return res.status(400).json({ error: req.t('errors.required_field') });
         }
 
         const result = await addClient({
@@ -123,7 +125,7 @@ router.post('/clients', AuthMiddleware.requireAdmin, async (req, res) => {
         });
 
         logger.info(`Client ajouté: ${name}`, { clientId: result.id });
-        res.status(201).json({ message: 'Client ajouté avec succès', id: result.id });
+        res.status(201).json({ message: req.t('success_message'), id: result.id });
     } catch (error) {
         if (error.message.includes('UNIQUE constraint')) {
             res.status(409).json({ error: 'Un client avec ce nom existe déjà' });

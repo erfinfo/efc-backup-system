@@ -7,6 +7,11 @@ let backups = [];
 let currentUser = null;
 let userPermissions = null;
 
+// Helper function pour les traductions
+function t(key, params = {}) {
+    return window.i18n ? window.i18n.t(key, params) : key;
+}
+
 // Initialisation
 document.addEventListener('DOMContentLoaded', () => {
     checkAuthStatus().then(authenticated => {
@@ -80,24 +85,24 @@ function navigateToSection(section) {
     // Mettre à jour le titre
     const header = document.querySelector('.header h1');
     const sectionTitles = {
-        'dashboard': 'Dashboard',
-        'clients': 'Gestion des Clients',
-        'backups': 'Historique des Backups',
-        'schedule': 'Planification',
-        'logs': 'Logs Système',
-        'settings': 'Paramètres',
-        'users': 'Gestion des Utilisateurs',
-        'config': 'Configuration Serveur',
-        'ssl': 'Configuration SSL/HTTPS',
-        'network': 'Trafic Réseau',
-        'system': 'État du Système'
+        'dashboard': i18n.t('dashboard'),
+        'clients': i18n.t('clients'),
+        'backups': i18n.t('backups'),
+        'schedule': i18n.t('schedule'),
+        'logs': i18n.t('logs'),
+        'settings': i18n.t('settings'),
+        'users': i18n.t('users'),
+        'config': i18n.t('general_settings'),
+        'ssl': i18n.t('ssl_certificates'),
+        'network': i18n.t('network_analysis'),
+        'system': i18n.t('system_monitoring')
     };
-    header.textContent = sectionTitles[section] || 'Dashboard';
+    header.textContent = sectionTitles[section] || i18n.t('dashboard');
 
     currentSection = section;
     loadSectionData(section).catch(error => {
         console.error('Erreur lors du chargement de la section:', error);
-        showNotification('Erreur lors du chargement de la section', 'error');
+        showNotification(i18n.t('error_occurred'), 'error');
     });
 }
 
@@ -114,7 +119,7 @@ async function loadDashboardData() {
             document.getElementById('storage-used').textContent = 
                 data.summary.storageUsedMB ? `${(data.summary.storageUsedMB / 1024).toFixed(1)} GB` : '0 GB';
             document.getElementById('last-run').textContent = 
-                data.summary.lastRun ? new Date(data.summary.lastRun).toLocaleString('fr-FR') : '-';
+                data.summary.lastRun ? window.i18n.formatDate(new Date(data.summary.lastRun)) : '-';
             
             // Mettre à jour les indicateurs de status (données API complètes)
             updateDataStatus('clients-status', 'real-data', 'API Dashboard');
@@ -148,11 +153,11 @@ async function loadRecentBackupsFromAPI() {
                         <td>${backup.client_name || 'Unknown'}</td>
                         <td>${backup.type || 'full'}</td>
                         <td><span class="badge badge-${backup.status === 'completed' ? 'success' : 'danger'}">
-                            ${backup.status === 'completed' ? 'Réussi' : 'Échoué'}</span></td>
+                            ${backup.status === 'completed' ? i18n.t('success') : i18n.t('failed')}</span></td>
                         <td>${backup.size_mb ? `${(backup.size_mb / 1024).toFixed(1)} GB` : '-'}</td>
-                        <td>${new Date(backup.created_at).toLocaleString('fr-FR')}</td>
+                        <td>${window.i18n.formatDate(new Date(backup.created_at))}</td>
                         <td>
-                            <button class="btn btn-sm" onclick="viewBackupDetails('${backup.client_name}')">Détails</button>
+                            <button class="btn btn-sm" onclick="viewBackupDetails('${backup.client_name}')">${i18n.t('details')}</button>
                         </td>
                     </tr>
                 `).join('');
@@ -460,7 +465,7 @@ async function loadBackupsHistory() {
                         <tbody>
                             ${backups.map(backup => `
                                 <tr>
-                                    <td>${new Date(backup.created_at).toLocaleString('fr-FR')}</td>
+                                    <td>${window.i18n.formatDate(new Date(backup.created_at))}</td>
                                     <td>${backup.client_name || 'Unknown'}</td>
                                     <td>${backup.type || 'full'}</td>
                                     <td>${backup.size_mb ? `${(backup.size_mb / 1024).toFixed(1)} GB` : '-'}</td>
@@ -758,7 +763,7 @@ async function loadSystemInfo() {
 
     } catch (error) {
         console.error('Erreur lors du chargement des informations système:', error);
-        showNotification('Erreur lors du chargement des informations système', 'error');
+        showNotification(t('error_occurred'), 'error');
     }
 }
 
@@ -796,33 +801,33 @@ function formatUptime(seconds) {
 }
 
 async function refreshSystemInfo() {
-    showNotification('Actualisation des informations système...', 'info');
+    showNotification(t('processing'), 'info');
     await loadSystemInfo();
-    showNotification('Informations système actualisées', 'success');
+    showNotification(t('success_message'), 'success');
 }
 
 async function performHealthCheck() {
     try {
-        showNotification('Exécution du Health Check...', 'info');
+        showNotification(t('processing'), 'info');
         const response = await fetch(`${API_URL}/system/health-check`, { method: 'POST' });
         if (response.ok) {
             const result = await response.json();
-            showNotification(`Health Check: ${result.status === 'healthy' ? 'Système en bonne santé' : 'Problèmes détectés'}`, 
+            showNotification(`Health Check: ${result.status === 'healthy' ? t('success') : t('error')}`, 
                 result.status === 'healthy' ? 'success' : 'warning');
             
             // Actualiser les informations
             await loadSystemInfo();
         } else {
-            showNotification('Erreur lors du Health Check', 'error');
+            showNotification(t('error_occurred'), 'error');
         }
     } catch (error) {
         console.error('Erreur Health Check:', error);
-        showNotification('Erreur lors du Health Check', 'error');
+        showNotification(t('error_occurred'), 'error');
     }
 }
 
 function downloadLogs() {
-    showNotification('Préparation du téléchargement des logs...', 'info');
+    showNotification(t('processing'), 'info');
     // Créer un lien de téléchargement pour les logs
     const link = document.createElement('a');
     link.href = `${API_URL}/logs?limit=1000&format=text`;
@@ -830,7 +835,7 @@ function downloadLogs() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showNotification('Téléchargement des logs démarré', 'success');
+    showNotification(t('success_message'), 'success');
 }
 
 function exportConfig() {
@@ -862,7 +867,7 @@ function exportConfig() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showNotification('Configuration exportée avec succès', 'success');
+    showNotification(t('success_message'), 'success');
 }
 
 // Fonctions pour l'onglet Configuration
@@ -912,16 +917,16 @@ async function loadServerConfig() {
         document.getElementById('disk-alert-input').value = '80';
         document.getElementById('disk-critical-input').value = '95';
 
-        showNotification('Configuration chargée', 'success');
+        showNotification(t('success_message'), 'success');
     } catch (error) {
         console.error('Erreur lors du chargement de la configuration:', error);
-        showNotification('Erreur lors du chargement de la configuration', 'error');
+        showNotification(t('error_occurred'), 'error');
     }
 }
 
 async function saveServerConfig() {
     try {
-        showNotification('Sauvegarde de la configuration...', 'info');
+        showNotification(t('processing'), 'info');
 
         // Collecter toutes les valeurs des formulaires
         const config = {
@@ -979,7 +984,7 @@ async function saveServerConfig() {
                 setTimeout(() => section.classList.remove('config-saved'), 1000);
             });
 
-            showNotification('Configuration sauvegardée avec succès', 'success');
+            showNotification(t('notifications.settings_saved'), 'success');
             
             // Afficher un avertissement si redémarrage nécessaire
             const needsRestart = config.server.port !== 3000 || 
@@ -1112,7 +1117,7 @@ async function testConfiguration() {
 function showAddScheduleModal() {
     // Vérifier les permissions admin
     if (!userPermissions || userPermissions.role !== 'admin') {
-        showNotification('Cette fonctionnalité est réservée aux administrateurs', 'error');
+        showNotification(t('notifications.permission_denied'), 'error');
         return;
     }
     
@@ -1213,6 +1218,187 @@ function showAddScheduleModal() {
     loadClientsForSchedule();
 }
 
+// Fonction pour éditer une planification existante
+async function editSchedule(scheduleName) {
+    try {
+        // Récupérer les détails de la planification
+        const response = await apiRequest('/api/schedules');
+        if (!response.ok) {
+            throw new Error('Erreur lors du chargement des planifications');
+        }
+        
+        const data = await response.json();
+        const schedules = data.schedules || data; // Gérer les deux formats possibles
+        const schedule = schedules.find(s => s.name === scheduleName);
+        
+        if (!schedule) {
+            showNotification('Planification introuvable', 'error');
+            return;
+        }
+        
+        // Afficher le modal de modification
+        showAddScheduleModal();
+        
+        // Pré-remplir les champs
+        document.getElementById('schedule-name').value = schedule.name;
+        document.getElementById('schedule-name').disabled = true; // Empêcher la modification du nom
+        document.getElementById('schedule-type').value = schedule.backup_type;
+        
+        // Détecter le type de fréquence depuis le pattern cron
+        const cronPattern = schedule.cron_pattern;
+        let frequency = 'custom';
+        let time = '02:00';
+        
+        // Pattern quotidien: "0 2 * * *" ou "00 02 * * *"
+        if (cronPattern.match(/^\d+\s+\d+\s+\*\s+\*\s+\*$/)) {
+            frequency = 'daily';
+            const parts = cronPattern.split(' ');
+            time = `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`;
+        }
+        // Pattern hebdomadaire: "0 2 * * 0-6"
+        else if (cronPattern.match(/^\d+\s+\d+\s+\*\s+\*\s+[0-6]$/)) {
+            frequency = 'weekly';
+            const parts = cronPattern.split(' ');
+            time = `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`;
+            document.getElementById('schedule-day').value = parts[4];
+        }
+        // Pattern mensuel: "0 2 1-31 * *"
+        else if (cronPattern.match(/^\d+\s+\d+\s+\d+\s+\*\s+\*$/)) {
+            frequency = 'monthly';
+            const parts = cronPattern.split(' ');
+            time = `${parts[1].padStart(2, '0')}:${parts[0].padStart(2, '0')}`;
+            document.getElementById('schedule-date').value = parts[2];
+        }
+        
+        document.getElementById('schedule-frequency').value = frequency;
+        updateCronFields(frequency);
+        
+        if (frequency !== 'custom') {
+            document.getElementById('schedule-time').value = time;
+        } else {
+            document.getElementById('schedule-cron').value = cronPattern;
+        }
+        
+        // Pré-sélectionner les clients
+        setTimeout(() => {
+            const clientNames = schedule.client_names ? JSON.parse(schedule.client_names) : [];
+            const select = document.getElementById('schedule-clients');
+            Array.from(select.options).forEach(option => {
+                if (clientNames.includes(option.value) || (clientNames.length === 0 && option.value === 'all')) {
+                    option.selected = true;
+                } else {
+                    option.selected = false;
+                }
+            });
+        }, 500);
+        
+        // Activer/désactiver selon le statut
+        document.getElementById('schedule-active').checked = schedule.active;
+        
+        // Changer le titre du modal
+        const modalTitle = document.querySelector('#add-schedule-modal .modal-header h2');
+        if (modalTitle) {
+            modalTitle.textContent = '✏️ Modifier la Planification';
+        }
+        
+        // Changer le bouton de sauvegarde pour update
+        const saveButton = document.querySelector('#add-schedule-modal .modal-footer .btn-primary');
+        if (saveButton) {
+            saveButton.setAttribute('onclick', `updateSchedule('${scheduleName}')`);
+            saveButton.textContent = '💾 Mettre à jour';
+        }
+        
+    } catch (error) {
+        console.error('Erreur lors de l\'édition de la planification:', error);
+        showNotification('Erreur lors du chargement de la planification', 'error');
+    }
+}
+
+// Fonction pour mettre à jour une planification existante
+async function updateSchedule(originalName) {
+    try {
+        const name = originalName; // Garder le nom original
+        const type = document.getElementById('schedule-type').value;
+        const frequency = document.getElementById('schedule-frequency').value;
+        const active = document.getElementById('schedule-active').checked;
+        
+        // Construire le pattern cron
+        let cronPattern = '';
+        if (frequency === 'custom') {
+            cronPattern = document.getElementById('schedule-cron').value;
+        } else {
+            const time = document.getElementById('schedule-time').value.split(':');
+            const hour = time[0];
+            const minute = time[1];
+            
+            if (frequency === 'daily') {
+                cronPattern = `${minute} ${hour} * * *`;
+            } else if (frequency === 'weekly') {
+                const day = document.getElementById('schedule-day').value;
+                cronPattern = `${minute} ${hour} * * ${day}`;
+            } else if (frequency === 'monthly') {
+                const date = document.getElementById('schedule-date').value;
+                cronPattern = `${minute} ${hour} ${date} * *`;
+            }
+        }
+        
+        // Récupérer les clients sélectionnés
+        const clientSelect = document.getElementById('schedule-clients');
+        const selectedClients = Array.from(clientSelect.selectedOptions).map(option => option.value);
+        const clientNames = selectedClients.includes('all') ? [] : selectedClients;
+        
+        const scheduleData = {
+            name: name,
+            cron_pattern: cronPattern,
+            backup_type: type,
+            client_names: clientNames,
+            description: `${frequency === 'daily' ? 'Quotidien' : frequency === 'weekly' ? 'Hebdomadaire' : frequency === 'monthly' ? 'Mensuel' : 'Personnalisé'} - ${type}`,
+            active: active
+        };
+        
+        const response = await apiRequest(`/api/schedules/${encodeURIComponent(name)}`, {
+            method: 'PUT',
+            body: JSON.stringify(scheduleData)
+        });
+        
+        if (response.ok) {
+            showNotification('Planification mise à jour avec succès', 'success');
+            document.getElementById('add-schedule-modal').remove();
+            await reloadSchedules();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de la mise à jour');
+        }
+    } catch (error) {
+        console.error('Erreur lors de la mise à jour de la planification:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
+// Fonction pour supprimer une planification
+async function deleteSchedule(scheduleName) {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer la planification "${scheduleName}" ?`)) {
+        return;
+    }
+    
+    try {
+        const response = await apiRequest(`/api/schedules/${encodeURIComponent(scheduleName)}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showNotification('Planification supprimée avec succès', 'success');
+            await reloadSchedules();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de la suppression');
+        }
+    } catch (error) {
+        console.error('Erreur lors de la suppression de la planification:', error);
+        showNotification(`Erreur: ${error.message}`, 'error');
+    }
+}
+
 // Charger les clients pour la planification
 async function loadClientsForSchedule() {
     try {
@@ -1269,14 +1455,14 @@ async function saveSchedule() {
     const clientsSelect = document.getElementById('schedule-clients');
     
     if (!name) {
-        showNotification('Veuillez entrer un nom pour la planification', 'error');
+        showNotification(t('errors.required_field'), 'error');
         return;
     }
     
     // Récupérer les clients sélectionnés
     const selectedClients = Array.from(clientsSelect.selectedOptions).map(option => option.value);
     if (selectedClients.length === 0) {
-        showNotification('Veuillez sélectionner au moins un client', 'error');
+        showNotification(t('errors.required_field'), 'error');
         return;
     }
     
@@ -1352,7 +1538,7 @@ async function saveSchedule() {
         if (response.ok) {
             const result = await response.json();
             console.log('Response data:', result);
-            showNotification('Planification créée avec succès', 'success');
+            showNotification(t('success_message'), 'success');
             document.getElementById('add-schedule-modal').remove();
             
             // Recharger la page des planifications si elle est affichée
@@ -1378,7 +1564,7 @@ function openQuickRestore() {
     // Vérifier si l'utilisateur est admin
     if (!userPermissions || userPermissions.role !== 'admin') {
         console.log('Accès refusé - pas admin');
-        showNotification('Cette fonctionnalité est réservée aux administrateurs', 'error');
+        showNotification(t('notifications.permission_denied'), 'error');
         return;
     }
     
@@ -1446,7 +1632,7 @@ async function loadClientsForRestore() {
         }
     } catch (error) {
         console.error('Erreur lors du chargement des clients:', error);
-        showNotification('Erreur lors du chargement des clients', 'error');
+        showNotification(t('error_occurred'), 'error');
     }
 }
 
@@ -1508,7 +1694,7 @@ async function loadClientBackups(clientName) {
         }
     } catch (error) {
         console.error('Erreur lors du chargement des backups:', error);
-        showNotification('Erreur lors du chargement des backups', 'error');
+        showNotification(t('error_occurred'), 'error');
     }
 }
 
@@ -1532,7 +1718,7 @@ function showBackupPreview(backupInfo) {
 function quickRestore() {
     const backupSelect = document.getElementById('restore-backup-select');
     if (!backupSelect.value) {
-        showNotification('Veuillez sélectionner un backup', 'error');
+        showNotification(t('errors.required_field'), 'error');
         return;
     }
     
@@ -1551,7 +1737,7 @@ async function startManualBackup(clientId) {
     if (!client) return;
     
     if (!hasPermission('backups_create')) {
-        showNotification('Vous n\'avez pas la permission de démarrer un backup', 'error');
+        showNotification(t('notifications.permission_denied'), 'error');
         return;
     }
     
@@ -1654,7 +1840,7 @@ async function selectBackupType(type) {
         
         if (response.ok) {
             const result = await response.json();
-            showNotification(`Backup ${type} démarré pour ${client.name}`, 'success');
+            showNotification(t('notifications.backup_started', {client: client.name}), 'success');
             
             // Afficher la popup de progression
             showBackupProgressModal(clientId, client.name, type, result.data.backupId);
@@ -1916,14 +2102,14 @@ async function cancelBackup(backupId) {
         });
         
         if (response.ok) {
-            showNotification('Backup annulé', 'info');
+            showNotification(t('cancel'), 'info');
             closeBackupProgressModal();
         } else {
-            showNotification('Impossible d\'annuler le backup', 'error');
+            showNotification(t('error_occurred'), 'error');
         }
     } catch (error) {
         console.error('Erreur lors de l\'annulation:', error);
-        showNotification('Erreur de connexion', 'error');
+        showNotification(t('notifications.network_error'), 'error');
     }
 }
 
@@ -2086,7 +2272,7 @@ async function handleAddClient(e) {
         
         if (response.ok) {
             const result = await response.json();
-            showNotification('Client ajouté avec succès', 'success');
+            showNotification(t('success_message'), 'success');
             closeModal();
             loadClients();
         } else {
@@ -2095,7 +2281,7 @@ async function handleAddClient(e) {
         }
     } catch (error) {
         console.error('Erreur lors de l\'ajout du client:', error);
-        showNotification('Erreur de connexion au serveur', 'error');
+        showNotification(t('notifications.server_error'), 'error');
     }
 }
 
@@ -2184,7 +2370,7 @@ async function handleEditClient(e, clientId) {
         });
         
         if (response.ok) {
-            showNotification('Client modifié avec succès', 'success');
+            showNotification(t('success_message'), 'success');
             document.querySelector('.modal').remove();
             loadClients();
         } else {
@@ -2193,7 +2379,7 @@ async function handleEditClient(e, clientId) {
         }
     } catch (error) {
         console.error('Erreur lors de la modification du client:', error);
-        showNotification('Erreur de connexion au serveur', 'error');
+        showNotification(t('notifications.server_error'), 'error');
     }
 }
 
@@ -2213,7 +2399,7 @@ async function deleteClient(clientId) {
         });
         
         if (response.ok) {
-            showNotification('Client supprimé avec succès', 'success');
+            showNotification(t('success_message'), 'success');
             loadClients();
         } else {
             const error = await response.json();
@@ -2221,7 +2407,7 @@ async function deleteClient(clientId) {
         }
     } catch (error) {
         console.error('Erreur lors de la suppression du client:', error);
-        showNotification('Erreur de connexion au serveur', 'error');
+        showNotification(t('notifications.server_error'), 'error');
     }
 }
 
@@ -2479,7 +2665,7 @@ function saveSettings() {
 function clearLogs() {
     if (confirm('Êtes-vous sûr de vouloir vider les logs?')) {
         document.getElementById('log-content').innerHTML = '';
-        showNotification('Logs vidés', 'success');
+        showNotification(t('success_message'), 'success');
     }
 }
 
@@ -3954,13 +4140,13 @@ async function loadUsersList() {
             allUsers = users;
             filteredUsers = [...users];
             renderUsersTable();
-            showNotification('Liste des utilisateurs chargée', 'success');
+            showNotification(t('success_message'), 'success');
         } else {
             throw new Error('Erreur lors du chargement des utilisateurs');
         }
     } catch (error) {
         console.error('Erreur chargement utilisateurs:', error);
-        showNotification('Erreur lors du chargement des utilisateurs', 'error');
+        showNotification(t('error_occurred'), 'error');
         
         // Afficher une erreur dans le tableau
         const tbody = document.getElementById('users-table-body');
@@ -4133,7 +4319,7 @@ function showAddUserModal() {
 function editUser(userId) {
     const user = allUsers.find(u => u.id === userId);
     if (!user) {
-        showNotification('Utilisateur non trouvé', 'error');
+        showNotification(t('errors.client_not_found'), 'error');
         return;
     }
 
@@ -4265,7 +4451,7 @@ function closeUserModal() {
 function showPasswordChangeModal(userId) {
     const user = allUsers.find(u => u.id === userId);
     if (!user) {
-        showNotification('Utilisateur non trouvé', 'error');
+        showNotification(t('errors.client_not_found'), 'error');
         return;
     }
 
@@ -4303,7 +4489,7 @@ async function changeUserPassword(event) {
         });
 
         if (response && response.ok) {
-            showNotification('Mot de passe changé avec succès', 'success');
+            showNotification(t('notifications.password_changed'), 'success');
             closePasswordModal();
         } else {
             const error = await response.json();
@@ -4369,7 +4555,7 @@ async function deleteUser(userId) {
         });
 
         if (response && response.ok) {
-            showNotification('Utilisateur supprimé avec succès', 'success');
+            showNotification(t('notifications.user_deleted'), 'success');
             await loadUsersList();
             await loadUserStats();
         } else {
@@ -4384,7 +4570,7 @@ async function deleteUser(userId) {
 }
 
 async function refreshUserList() {
-    showNotification('Actualisation de la liste des utilisateurs...', 'info');
+    showNotification(t('processing'), 'info');
     await Promise.all([
         loadUsersList(),
         loadUserStats()
@@ -4393,7 +4579,7 @@ async function refreshUserList() {
 
 async function exportUsers() {
     try {
-        showNotification('Export des utilisateurs...', 'info');
+        showNotification(t('processing'), 'info');
         
         const response = await apiRequest(`${API_URL}/users/export/csv`);
         if (response && response.ok) {
@@ -4408,7 +4594,7 @@ async function exportUsers() {
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
             
-            showNotification('Export terminé avec succès', 'success');
+            showNotification(t('success_message'), 'success');
         } else {
             throw new Error('Erreur lors de l\'export');
         }
@@ -4525,7 +4711,7 @@ async function changeUserPassword() {
 
         if (response && response.ok) {
             const data = await response.json();
-            showNotification('Mot de passe changé avec succès', 'success');
+            showNotification(t('notifications.password_changed'), 'success');
             closePasswordModal();
             
             // Optionnel: forcer une reconnexion si indiqué par le serveur
@@ -4847,7 +5033,71 @@ async function viewRetryLogs() {
     addMaintenanceLog('info', 'Affichage des logs de retry...'); 
 }
 async function reloadSchedules() { 
-    addMaintenanceLog('info', 'Rechargement des planifications...'); 
+    try {
+        const response = await apiRequest('/api/schedules');
+        if (!response.ok) {
+            throw new Error('Erreur lors du chargement des planifications');
+        }
+        
+        const data = await response.json();
+        const schedules = data.schedules || data;
+        
+        const scheduleList = document.getElementById('schedule-list');
+        if (scheduleList) {
+            if (schedules && schedules.length > 0) {
+                scheduleList.innerHTML = `
+                    <div class="schedules-grid">
+                        ${schedules.map(schedule => `
+                            <div class="schedule-card">
+                                <h3>${schedule.name}</h3>
+                                <p><strong>Pattern:</strong> ${schedule.cron_pattern}</p>
+                                <p><strong>Type:</strong> ${schedule.backup_type}</p>
+                                <p><strong>Description:</strong> ${schedule.description || 'N/A'}</p>
+                                <p><strong>Clients:</strong> ${schedule.client_names ? 
+                                    (schedule.client_names === '[object Object]' ? 'Configuration invalide' : schedule.client_names) : 
+                                    'Tous'}</p>
+                                <p><strong>Statut:</strong> <span class="${schedule.active ? 'status-active' : 'status-inactive'}">${schedule.active ? 'Actif' : 'Inactif'}</span></p>
+                                ${schedule.last_run ? `<p><strong>Dernière:</strong> ${new Date(schedule.last_run).toLocaleString('fr-FR')}</p>` : ''}
+                                <div class="schedule-actions">
+                                    <button class="btn btn-primary btn-sm" onclick="editSchedule('${schedule.name}')">Modifier</button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteSchedule('${schedule.name}')">Supprimer</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn btn-primary" style="margin-top: 1rem;" onclick="showAddScheduleModal()">
+                        ➕ Ajouter une planification
+                    </button>
+                `;
+            } else {
+                scheduleList.innerHTML = `
+                    <div class="no-data-message">
+                        <span class="no-data-icon">⏰</span>
+                        <h4>Aucune planification configurée</h4>
+                        <p>Configurez des planifications automatiques pour vos backups.</p>
+                        <div class="no-data-actions">
+                            <button class="btn btn-primary" onclick="showAddScheduleModal()">
+                                ➕ Créer une planification
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement des planifications:', error);
+        const scheduleList = document.getElementById('schedule-list');
+        if (scheduleList) {
+            scheduleList.innerHTML = `
+                <div class="error-message">
+                    <span class="error-icon">⚠️</span>
+                    <h4>Erreur de chargement</h4>
+                    <p>${error.message}</p>
+                    <button class="btn btn-primary" onclick="reloadSchedules()">Réessayer</button>
+                </div>
+            `;
+        }
+    }
 }
 async function validateSchedules() { 
     addMaintenanceLog('info', 'Validation des planifications...'); 
@@ -4905,7 +5155,7 @@ async function downloadBackup(backupId) {
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
         
-        showNotification('Téléchargement du backup lancé', 'success');
+        showNotification(t('success_message'), 'success');
     } catch (error) {
         console.error('Erreur lors du téléchargement:', error);
         showNotification(`Erreur lors du téléchargement: ${error.message}`, 'error');

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EFC Backup System - Dashboard | EFC Informatique</title>
+    <title data-i18n="app_name">EFC Backup System</title>
     <link rel="icon" type="image/png" href="logo.png">
     <link rel="stylesheet" href="styles.css">
     <meta name="description" content="Système professionnel de backup automatique pour clients Windows - EFC Informatique">
@@ -15,20 +15,21 @@
                 <img src="logo.png" alt="EFC Informatique Logo" style="width: 100px; height: 100px; display: block; object-fit: contain;">
                 <div>
                     <h2>EFC Backup</h2>
-                    <p style="font-size: 0.75rem; color: rgba(180, 227, 165, 0.8); margin: 0; font-family: 'Noto Sans', sans-serif;">Informatique</p>
+                    <p style="font-size: 0.75rem; color: rgba(180, 227, 165, 0.8); margin: 0; font-family: 'Noto Sans', sans-serif;" data-i18n="company">EFC Computing</p>
                 </div>
             </div>
             <ul class="nav-menu">
-                <li><a href="#dashboard" class="active">Dashboard</a></li>
-                <li><a href="#clients">Clients</a></li>
-                <li><a href="#backups">Backups</a></li>
-                <li><a href="#schedule">Planification</a></li>
-                <li><a href="#logs">Logs</a></li>
-                <li><a href="#settings">Paramètres</a></li>
-                <li><a href="#users">Utilisateurs</a></li>
+                <li><a href="#dashboard" class="active" data-i18n="dashboard">Dashboard</a></li>
+                <li><a href="#clients" data-i18n="clients">Clients</a></li>
+                <li><a href="#backups" data-i18n="backups">Backups</a></li>
+                <li><a href="#schedule" data-i18n="schedule">Planification</a></li>
+                <li><a href="#logs" data-i18n="logs">Logs</a></li>
+                <li><a href="#settings" data-i18n="settings">Paramètres</a></li>
+                <li><a href="#users" data-i18n="users">Utilisateurs</a></li>
                 <li><a href="#config">Configuration</a></li>
-                <li><a href="#ssl">SSL/HTTPS</a></li>
-                <li><a href="#network">Trafic Réseau</a></li>
+                <li><a href="#ssl" data-i18n="ssl">SSL/HTTPS</a></li>
+                <li><a href="#network" data-i18n="network">Trafic Réseau</a></li>
+                <li><a href="#maintenance" data-i18n="maintenance">Maintenance</a></li>
                 <li><a href="#system">Système</a></li>
             </ul>
         </nav>
@@ -36,12 +37,12 @@
         <main class="main-content">
             <header class="header">
                 <div>
-                    <h1>Dashboard</h1>
+                    <h1 data-i18n="dashboard">Dashboard</h1>
                     <p style="color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem;">Système de backup professionnel EFC Informatique</p>
                 </div>
-                <div class="header-actions">
-                    <button class="btn btn-primary" onclick="startManualBackup()">
-                        🔄 Backup Manuel
+                <div class="header-actions nav-right">
+                    <button class="btn btn-primary" onclick="openQuickRestore()" id="quick-restore-btn-dashboard">
+                        🔄 Restauration Rapide
                     </button>
                     <span class="status-indicator" id="status">
                         <span class="status-dot"></span>
@@ -52,30 +53,43 @@
             
             <div class="dashboard-grid">
                 <div class="stat-card">
-                    <h3>Clients Actifs</h3>
+                    <div class="stat-header">
+                        <h3 data-i18n="active_clients">Clients Actifs</h3>
+                        <button class="refresh-btn" onclick="loadDashboardData()" title="Actualiser les données">🔄</button>
+                    </div>
                     <p class="stat-number" id="active-clients">0</p>
+                    <small class="data-status" id="clients-status">Chargement...</small>
                 </div>
                 
                 <div class="stat-card">
-                    <h3>Backups Aujourd'hui</h3>
+                    <div class="stat-header">
+                        <h3 data-i18n="todays_backups">Backups Aujourd'hui</h3>
+                    </div>
                     <p class="stat-number" id="today-backups">0</p>
+                    <small class="data-status" id="backups-status">Chargement...</small>
                 </div>
                 
                 <div class="stat-card">
-                    <h3>Espace Utilisé</h3>
+                    <div class="stat-header">
+                        <h3 data-i18n="disk_space_used">Espace Utilisé</h3>
+                    </div>
                     <p class="stat-number" id="storage-used">0 GB</p>
+                    <small class="data-status" id="storage-status">Chargement...</small>
                 </div>
                 
                 <div class="stat-card">
-                    <h3>Dernière Exécution</h3>
+                    <div class="stat-header">
+                        <h3 data-i18n="last_backup">Dernière Exécution</h3>
+                    </div>
                     <p class="stat-text" id="last-run">-</p>
+                    <small class="data-status" id="lastrun-status">Chargement...</small>
                 </div>
             </div>
             
             <div class="content-sections">
                 <section id="dashboard-section" class="content-section active">
                     <div class="recent-backups">
-                        <h2>Backups Récents</h2>
+                        <h2 data-i18n="recent_backups">Backups Récents</h2>
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -96,9 +110,9 @@
                 
                 <section id="clients-section" class="content-section">
                     <div class="section-header">
-                        <h2>Gestion des Clients</h2>
+                        <h2 data-i18n="clients">Gestion des Clients</h2>
                         <button class="btn btn-primary" onclick="showAddClientModal()">
-                            Ajouter Client
+                            <span data-i18n="add_client">Ajouter Client</span>
                         </button>
                     </div>
                     <div id="clients-list" class="clients-grid">
@@ -449,7 +463,7 @@
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label>Chemin de stockage</label>
-                                        <input type="text" id="backup-path-input" class="form-input" value="/tmp/efc-backups-test">
+                                        <input type="text" id="backup-path-input" class="form-input" value="">
                                         <small>Dossier de stockage des backups</small>
                                     </div>
                                     <div class="form-group">
@@ -1017,6 +1031,179 @@
                         </div>
                     </div>
                 </section>
+                
+                <section id="maintenance-section" class="content-section">
+                    <h2>🔧 Maintenance Système</h2>
+                    
+                    <div class="maintenance-overview">
+                        <!-- Health Check -->
+                        <div class="maintenance-card">
+                            <h3>🏥 Vérification Santé</h3>
+                            <p>Effectue un diagnostic complet du système, base de données, connexions clients et espace disque.</p>
+                            <div class="maintenance-actions">
+                                <button class="btn btn-primary" onclick="runHealthCheck()">
+                                    <span class="btn-icon">🔍</span>
+                                    Lancer Health Check
+                                </button>
+                                <button class="btn btn-secondary" onclick="viewHealthResults()">
+                                    <span class="btn-icon">📊</span>
+                                    Voir Résultats
+                                </button>
+                            </div>
+                            <div id="health-results" class="results-container" style="display: none;">
+                                <div class="results-content"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Nettoyage -->
+                        <div class="maintenance-card">
+                            <h3>🧹 Nettoyage Automatique</h3>
+                            <p>Supprime les anciens backups, logs et métriques selon la politique de rétention.</p>
+                            <div class="maintenance-stats">
+                                <div class="stat-item">
+                                    <span>Rétention Backups:</span>
+                                    <span id="retention-days">30 jours</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>Rétention Logs:</span>
+                                    <span id="log-retention-days">90 jours</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>Espace libérable:</span>
+                                    <span id="cleanable-space">Calcul...</span>
+                                </div>
+                            </div>
+                            <div class="maintenance-actions">
+                                <button class="btn btn-warning" onclick="runCleanup()">
+                                    <span class="btn-icon">🗑️</span>
+                                    Lancer Nettoyage
+                                </button>
+                                <button class="btn btn-secondary" onclick="estimateCleanup()">
+                                    <span class="btn-icon">📏</span>
+                                    Estimer
+                                </button>
+                            </div>
+                            <div id="cleanup-results" class="results-container" style="display: none;">
+                                <div class="results-content"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Test Connexions -->
+                        <div class="maintenance-card">
+                            <h3>🔌 Test Connexions</h3>
+                            <p>Vérifie la connectivité vers tous les clients configurés avec retry automatique.</p>
+                            <div id="connection-status">
+                                <div class="connection-stats">
+                                    <div class="stat-item">
+                                        <span>Clients actifs:</span>
+                                        <span id="active-clients-count">-</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <span>Derniers tests:</span>
+                                        <span id="last-connection-test">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="maintenance-actions">
+                                <button class="btn btn-primary" onclick="testAllConnections()">
+                                    <span class="btn-icon">🔄</span>
+                                    Tester Toutes Connexions
+                                </button>
+                                <button class="btn btn-secondary" onclick="testFailedConnections()">
+                                    <span class="btn-icon">⚡</span>
+                                    Tester Échecs
+                                </button>
+                            </div>
+                            <div id="connection-results" class="results-container" style="display: none;">
+                                <div class="results-content"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Test Retry Logic -->
+                        <div class="maintenance-card">
+                            <h3>🔄 Test Gestion Erreurs</h3>
+                            <p>Valide le système de retry et la gestion d'erreurs avec différents scénarios.</p>
+                            <div class="maintenance-actions">
+                                <button class="btn btn-info" onclick="runErrorHandlingTests()">
+                                    <span class="btn-icon">🧪</span>
+                                    Tests Retry
+                                </button>
+                                <button class="btn btn-secondary" onclick="viewRetryLogs()">
+                                    <span class="btn-icon">📋</span>
+                                    Logs Retry
+                                </button>
+                            </div>
+                            <div id="error-test-results" class="results-container" style="display: none;">
+                                <div class="results-content"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Planifications -->
+                        <div class="maintenance-card">
+                            <h3>⏰ Gestion Planifications</h3>
+                            <p>Vérifie la persistance et le fonctionnement des planifications personnalisées.</p>
+                            <div class="schedule-stats">
+                                <div class="stat-item">
+                                    <span>Planifications actives:</span>
+                                    <span id="active-schedules-count">-</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span>Prochaine exécution:</span>
+                                    <span id="next-schedule-run">-</span>
+                                </div>
+                            </div>
+                            <div class="maintenance-actions">
+                                <button class="btn btn-success" onclick="reloadSchedules()">
+                                    <span class="btn-icon">🔄</span>
+                                    Recharger
+                                </button>
+                                <button class="btn btn-warning" onclick="validateSchedules()">
+                                    <span class="btn-icon">✅</span>
+                                    Valider
+                                </button>
+                            </div>
+                            <div id="schedule-results" class="results-container" style="display: none;">
+                                <div class="results-content"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Actions Système -->
+                        <div class="maintenance-card">
+                            <h3>⚙️ Actions Système</h3>
+                            <p>Actions de maintenance avancées et utilitaires système.</p>
+                            <div class="maintenance-actions">
+                                <button class="btn btn-secondary" onclick="restartServices()">
+                                    <span class="btn-icon">🔄</span>
+                                    Redémarrer Services
+                                </button>
+                                <button class="btn btn-warning" onclick="optimizeDatabase()">
+                                    <span class="btn-icon">🗃️</span>
+                                    Optimiser BDD
+                                </button>
+                                <button class="btn btn-info" onclick="generateMaintenanceReport()">
+                                    <span class="btn-icon">📊</span>
+                                    Rapport Maintenance
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Log de maintenance en temps réel -->
+                    <div class="maintenance-log">
+                        <h3>📋 Journal de Maintenance</h3>
+                        <div class="log-controls">
+                            <button class="btn btn-sm btn-secondary" onclick="clearMaintenanceLog()">Vider</button>
+                            <button class="btn btn-sm btn-primary" onclick="downloadMaintenanceLog()">Télécharger</button>
+                        </div>
+                        <div id="maintenance-log-content" class="log-content">
+                            <div class="log-line">
+                                <span class="log-timestamp">[En attente...]</span>
+                                <span class="log-level info">INFO</span>
+                                <span class="log-message">Interface de maintenance prête</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
             
             <!-- Footer EFC Branding -->
@@ -1032,7 +1219,7 @@
                     <div class="footer-links">
                         <a href="https://efcinfo.com" target="_blank">Site web</a>
                         <a href="mailto:erick@efcinfo.com">Support</a>
-                        <span id="app-version">Version 1.3.0</span>
+                        <span id="app-version">Version 1.4.1</span>
                     </div>
                 </div>
             </footer>
@@ -1136,6 +1323,8 @@
     
     <!-- Chart.js for network traffic visualizations -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Internationalization -->
+    <script src="i18n/i18n.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
