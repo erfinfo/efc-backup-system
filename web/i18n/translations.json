@@ -213,6 +213,7 @@
     "no_results": "Aucun résultat",
     "error_occurred": "Une erreur s'est produite",
     "success_message": "Opération réussie",
+    "select_language": "Sélectionner la langue",
     
     "notifications": {
       "backup_started": "Sauvegarde démarrée pour {client}",
@@ -464,6 +465,7 @@
     "no_results": "No results",
     "error_occurred": "An error occurred",
     "success_message": "Operation successful",
+    "select_language": "Select language",
     
     "notifications": {
       "backup_started": "Backup started for {client}",
