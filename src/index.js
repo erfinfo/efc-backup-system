@@ -29,7 +29,7 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Configuration du proxy pour Apache
-app.set('trust proxy', 1);
+app.set('trust proxy', true);
 
 // Middleware de sécurité et performance
 app.use(helmet({
@@ -90,6 +90,15 @@ app.use((req, res, next) => {
     next();
 });
 
+// Middleware de gestion d'erreurs JSON
+app.use((err, req, res, next) => {
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+        logger.warn(`JSON parse error from ${req.ip}: ${err.message}`);
+        return res.status(400).json({ error: 'Format JSON invalide' });
+    }
+    next(err);
+});
+
 // Servir les fichiers statiques avec cache
 app.use(express.static(path.join(__dirname, '../web'), {
     maxAge: process.env.NODE_ENV === 'production' ? '1d' : '0'
@@ -112,6 +121,12 @@ app.use('/api/ssl', sslRoutes);
 
 // Routes de gestion des utilisateurs
 app.use('/api/users', usersRoutes);
+
+// Middleware global de gestion d'erreurs
+app.use((err, req, res, next) => {
+    logger.error('Erreur serveur:', err);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+});
 
 // Route principale avec fallback pour SPA
 app.get('*', (req, res) => {
@@ -147,9 +162,9 @@ async function initialize() {
         backupScheduler.start();
         logger.info('✅ Planificateur de backups démarré');
 
-        // 4. Test de la configuration des notifications
-        logger.info('📧 Test de la configuration des notifications...');
-        const notifTest = await notificationService.testConfiguration();
+        // 4. Vérification de la configuration des notifications (sans envoi de test)
+        logger.info('📧 Vérification de la configuration des notifications...');
+        const notifTest = await notificationService.testConfiguration(false);
         if (notifTest.success) {
             logger.info('✅ Notifications configurées et opérationnelles');
         } else {

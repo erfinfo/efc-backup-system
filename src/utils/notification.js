@@ -333,7 +333,7 @@ Nous vous tiendrons informés de l'évolution.
         return await this.sendEmail(recipient, subject, fullMessage);
     }
 
-    async testConfiguration() {
+    async testConfiguration(sendTestEmail = false) {
         if (!this.isConfigured) {
             return {
                 success: false,
@@ -344,19 +344,21 @@ Nous vous tiendrons informés de l'évolution.
         try {
             await this.transporter.verify();
             
-            // Envoyer un email de test si configuré
-            const testRecipient = process.env.NOTIFICATION_EMAIL;
-            if (testRecipient) {
-                const sent = await this.sendEmail(
-                    testRecipient,
-                    'Test de configuration',
-                    'Ceci est un email de test pour vérifier la configuration du système de notifications EFC Backup.\n\nSi vous recevez cet email, la configuration est correcte.'
-                );
-                
-                return {
-                    success: sent,
-                    message: sent ? 'Email de test envoyé avec succès' : 'Erreur lors de l\'envoi de l\'email de test'
-                };
+            // Envoyer un email de test seulement si explicitement demandé
+            if (sendTestEmail) {
+                const testRecipient = process.env.NOTIFICATION_EMAIL;
+                if (testRecipient) {
+                    const sent = await this.sendEmail(
+                        testRecipient,
+                        'Test de configuration',
+                        'Ceci est un email de test pour vérifier la configuration du système de notifications EFC Backup.\n\nSi vous recevez cet email, la configuration est correcte.'
+                    );
+                    
+                    return {
+                        success: sent,
+                        message: sent ? 'Email de test envoyé avec succès' : 'Erreur lors de l\'envoi de l\'email de test'
+                    };
+                }
             }
             
             return {
