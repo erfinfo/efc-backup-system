@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-REPO_URL="https://github.com/votre-repo/efc-backup"  # À remplacer par votre repo
+REPO_URL="https://github.com/erfinfo/efc-backup-system"  # Repository officiel EFC
 INSTALL_DIR="/opt/efc-backup"
 SERVICE_USER="efc-backup"
 
@@ -86,8 +86,12 @@ chown -R $SERVICE_USER:$SERVICE_USER "$INSTALL_DIR"
 
 # Créer les dossiers nécessaires
 echo "📁 Création des dossiers système..."
-mkdir -p /var/backups/efc /var/log/efc-backup /var/lib/efc-backup
-chown $SERVICE_USER:$SERVICE_USER /var/backups/efc /var/log/efc-backup /var/lib/efc-backup
+mkdir -p /backup /var/log/efc-backup /var/lib/efc-backup
+chown $SERVICE_USER:$SERVICE_USER /backup /var/log/efc-backup /var/lib/efc-backup
+# Permissions sécurisées
+chmod 750 /backup
+chmod 750 /var/log/efc-backup
+chmod 750 /var/lib/efc-backup
 
 # Installation des dépendances
 echo "📦 Installation des dépendances Node.js..."
@@ -100,7 +104,7 @@ if [[ ! -f "$INSTALL_DIR/.env" ]]; then
     cat > "$INSTALL_DIR/.env" << EOF
 PORT=3000
 NODE_ENV=production
-BACKUP_PATH=/var/backups/efc
+BACKUP_PATH=/backup
 LOG_PATH=/var/log/efc-backup
 DB_PATH=/var/lib/efc-backup/database.db
 RETENTION_DAYS=30

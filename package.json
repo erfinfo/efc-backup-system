@@ -20,6 +20,7 @@
     "backup-config": "node scripts/backup-config.js",
     "restore-config": "node scripts/restore-config.js",
     "health-check": "node scripts/health-check.js",
+    "test-error-handling": "node scripts/test-error-handling.js",
     "install-service": "node scripts/install-service.js",
     "uninstall-service": "node scripts/uninstall-service.js"
   },

@@ -212,16 +212,46 @@ class BackupScheduler {
                 port: client.port || 22,
                 username: client.username,
                 password: client.password,
-                folders: client.folders ? client.folders.split(',').map(f => f.trim()) : []
+                folders: (() => {
+                    try {
+                        if (typeof client.folders === 'string') {
+                            // Si c'est une chaîne JSON, essayer de parser
+                            if (client.folders.startsWith('[')) {
+                                return JSON.parse(client.folders);
+                            }
+                            // Si c'est une chaîne délimitée par des virgules
+                            return client.folders.split(',').map(f => f.trim());
+                        }
+                        return [];
+                    } catch (e) {
+                        logger.warn(`Erreur parsing folders pour ${client.name}: ${e.message}`);
+                        return [];
+                    }
+                })()
             });
 
             const backupOptions = {
                 type: type,
                 backupId: clientBackupId,
-                backupPath: process.env.BACKUP_PATH || '/var/backups/efc',
+                backupPath: process.env.BACKUP_PATH || '/backup',
                 useVSS: process.env.USE_VSS !== 'false',
-                createImage: type === 'full' && process.env.CREATE_SYSTEM_IMAGE === 'true',
-                folders: client.folders ? client.folders.split(',').map(f => f.trim()) : []
+                createImage: (options && options.createImage) || (type === 'full' && process.env.CREATE_SYSTEM_IMAGE === 'true'),
+                folders: (() => {
+                    try {
+                        if (typeof client.folders === 'string') {
+                            // Si c'est une chaîne JSON, essayer de parser
+                            if (client.folders.startsWith('[')) {
+                                return JSON.parse(client.folders);
+                            }
+                            // Si c'est une chaîne délimitée par des virgules
+                            return client.folders.split(',').map(f => f.trim());
+                        }
+                        return [];
+                    } catch (e) {
+                        logger.warn(`Erreur parsing folders pour ${client.name}: ${e.message}`);
+                        return [];
+                    }
+                })()
             };
 
             // Exécuter le backup avec retry automatique
@@ -600,8 +630,8 @@ Serveur: ${process.env.HOSTNAME || 'EFC-Backup-Server'}
                 triggeredBy: options.triggered_by || 'manual'
             });
 
-            // Démarrer le backup de façon asynchrone
-            this.performClientBackupWithProgress(client, options.type || 'full', backupId)
+            // Démarrer le backup de façon asynchrone avec les options
+            this.performClientBackupWithProgress(client, options.type || 'full', backupId, options)
                 .then(() => {
                     // Laisser le backup visible dans l'interface pendant 10 secondes
                     setTimeout(() => {
@@ -634,7 +664,7 @@ Serveur: ${process.env.HOSTNAME || 'EFC-Backup-Server'}
     }
 
     // Version améliorée de performClientBackup avec suivi de progression
-    async performClientBackupWithProgress(client, type, backupId) {
+    async performClientBackupWithProgress(client, type, backupId, options = {}) {
         const backupData = this.runningBackups.get(backupId);
         if (!backupData) return;
 
@@ -674,16 +704,22 @@ Serveur: ${process.env.HOSTNAME || 'EFC-Backup-Server'}
                 progressCallback('Sauvegarde en cours', 30);
                 
                 // Utiliser les bonnes méthodes selon le type de backup avec callback
+                const backupOptions = { 
+                    progressCallback,
+                    createImage: options.createImage || false,
+                    type: type
+                };
+                
                 if (type === 'incremental') {
                     const lastFullBackup = await this.findLastFullBackup(client.name);
                     if (lastFullBackup) {
-                        return await backupClient.performIncrementalBackup(lastFullBackup, { progressCallback });
+                        return await backupClient.performIncrementalBackup(lastFullBackup, backupOptions);
                     } else {
                         logger.warn(`Aucun backup complet trouvé pour ${client.name}, backup complet forcé`);
-                        return await backupClient.performFullBackup({ progressCallback });
+                        return await backupClient.performFullBackup(backupOptions);
                     }
                 } else {
-                    return await backupClient.performFullBackup({ progressCallback });
+                    return await backupClient.performFullBackup(backupOptions);
                 }
             }, 3);
 

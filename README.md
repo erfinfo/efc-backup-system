@@ -78,7 +78,7 @@ PORT=3000
 NODE_ENV=production
 
 # Chemins de stockage
-BACKUP_PATH=/var/backups/efc
+BACKUP_PATH=/backup
 LOG_PATH=/var/log/efc-backup
 
 # Configuration des backups
@@ -265,7 +265,7 @@ sudo systemctl status efc-backup
 
 ### Système d'Authentification
 
-**EFC Backup v1.4.0** intègre un système complet de gestion des utilisateurs :
+**EFC Backup v1.4.1** intègre un système complet de gestion des utilisateurs :
 
 - **Authentification JWT** sécurisée avec sessions
 - **Rôles utilisateurs** : Administrateur et Client
@@ -556,7 +556,7 @@ iftop -i eth0
 
 ---
 
-**Version** : 1.3.0  
+**Version** : 1.4.1  
 **Dernière mise à jour** : 2024  
 **Support** : erick@efcinfo.com  
 **Repository GitHub** : https://github.com/erfinfo/efc-backup-system  

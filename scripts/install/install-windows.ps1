@@ -1,5 +1,5 @@
 # EFC Backup System - Script d'installation automatique Windows
-# Version: 1.0.0
+# Version: 1.4.1
 # Auteur: EFC Informatique
 # Usage: Exécuter en tant qu'Administrateur
 # PowerShell -ExecutionPolicy Bypass -File install-windows.ps1
@@ -7,12 +7,12 @@
 #Requires -RunAsAdministrator
 
 # Configuration
-$EFC_VERSION = "1.0.0"
+$EFC_VERSION = "1.4.1"
 $EFC_URL = "https://nodejs.org/dist/v18.19.0/node-v18.19.0-x64.msi"
 $INSTALL_DIR = "C:\Program Files\EFC-Backup"
 $DATA_DIR = "C:\ProgramData\EFC-Backup"
 $LOG_DIR = "C:\Logs\EFC-Backup"
-$BACKUP_DIR = "C:\Backups\EFC"
+$BACKUP_DIR = "C:\Backup"
 $SERVICE_NAME = "EFC-Backup"
 $SERVICE_USER = "EFC-BackupService"
 
@@ -495,7 +495,7 @@ function Show-FinalInfo {
     
     Write-Host "🌐 Interface web: http://$($localIP):3000" -ForegroundColor Cyan
     Write-Host "📁 Dossier d'installation: $INSTALL_DIR" -ForegroundColor Cyan
-    Write-Host "💾 Dossier de backup: $BACKUP_DIR" -ForegroundColor Cyan
+    Write-Host "💾 Dossier de backup: $BACKUP_DIR (structure: C:\Backup\[nom_client]\)" -ForegroundColor Cyan
     Write-Host "📋 Logs: $LOG_DIR" -ForegroundColor Cyan
     
     # Afficher le mot de passe admin

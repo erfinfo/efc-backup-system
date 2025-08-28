@@ -1,6 +1,6 @@
 # 🎉 EFC Backup System - SYSTÈME COMPLET
 
-## ✅ TOUTES LES TÂCHES TERMINÉES (11/11) - v1.4.0
+## ✅ TOUTES LES TÂCHES TERMINÉES (11/11) - v1.4.1
 
 Le système EFC Backup est maintenant **100% fonctionnel** et prêt pour la production !
 
@@ -120,7 +120,7 @@ efc-backup/
 - **Troubleshooting** : Solutions problèmes courants
 - **CLAUDE.md** : Guide pour développement futur
 
-### ✅ 11. Gestion des Utilisateurs et Sécurité (v1.4.0)
+### ✅ 11. Gestion des Utilisateurs et Sécurité (v1.4.1)
 - **Authentification JWT** : Sécurisée avec tokens et sessions
 - **Gestion utilisateurs** : Interface CRUD complète pour admins
 - **Rôles & permissions** : Système granulaire (Admin/Client)

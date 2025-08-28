@@ -164,8 +164,8 @@
                                 <option value="warn">Warning</option>
                                 <option value="error">Erreur</option>
                             </select>
-                            <button class="btn btn-secondary" onclick="refreshLogs()">🔄 Actualiser</button>
-                            <button class="btn btn-secondary" onclick="clearLogs()">🗑️ Vider</button>
+                            <button class="btn btn-secondary" onclick="refreshLogs()"><span>🔄</span> <span data-i18n="refresh">Actualiser</span></button>
+                            <button class="btn btn-secondary" onclick="clearLogs()"><span>🗑️</span> <span data-i18n="empty">Vider</span></button>
                         </div>
                         <div id="log-content" class="log-content">
                             <!-- Rempli dynamiquement -->
@@ -188,7 +188,7 @@
                             <label>Email de notification</label>
                             <input type="email" id="notification-email" class="form-input">
                         </div>
-                        <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
+                        <button class="btn btn-primary" onclick="saveSettings()" data-i18n="save">Enregistrer</button>
                     </div>
                 </section>
                 
@@ -218,13 +218,13 @@
                         
                         <div class="user-actions">
                             <button class="btn btn-primary" onclick="showAddUserModal()">
-                                ➕ Ajouter Utilisateur
+                                <span>➕</span> <span data-i18n="add_user">Ajouter Utilisateur</span>
                             </button>
                             <button class="btn btn-secondary" onclick="refreshUserList()">
-                                🔄 Actualiser
+                                <span>🔄</span> <span data-i18n="refresh">Actualiser</span>
                             </button>
                             <button class="btn btn-warning" onclick="exportUsers()">
-                                📤 Exporter
+                                <span>📤</span> <span data-i18n="export">Exporter</span>
                             </button>
                         </div>
                     </div>
@@ -369,8 +369,8 @@
                                 </div>
                                 
                                 <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Annuler</button>
-                                    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                                    <button type="button" class="btn btn-secondary" onclick="closeUserModal()" data-i18n="cancel">Annuler</button>
+                                    <button type="submit" class="btn btn-primary"><span>💾</span> <span data-i18n="save">Enregistrer</span></button>
                                 </div>
                             </form>
                         </div>
@@ -402,8 +402,8 @@
                                     </div>
                                 </div>
                                 <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Annuler</button>
-                                    <button type="submit" class="btn btn-warning">🔑 Changer le mot de passe</button>
+                                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()" data-i18n="cancel">Annuler</button>
+                                    <button type="submit" class="btn btn-warning"><span>🔑</span> <span data-i18n="change_password">Changer le mot de passe</span></button>
                                 </div>
                             </form>
                         </div>
@@ -610,16 +610,16 @@
                         <div class="config-actions">
                             <div class="action-group">
                                 <button type="button" class="btn btn-secondary" onclick="loadServerConfig()">
-                                    🔄 Recharger
+                                    <span>🔄</span> <span data-i18n="reload">Recharger</span>
                                 </button>
                                 <button type="button" class="btn btn-warning" onclick="resetConfigToDefaults()">
-                                    ⚠️ Réinitialiser
+                                    <span>⚠️</span> <span data-i18n="reset_config">Réinitialiser</span>
                                 </button>
                                 <button type="button" class="btn btn-success" onclick="testConfiguration()">
-                                    🧪 Tester Config
+                                    <span>🧪</span> <span data-i18n="test_config">Tester Config</span>
                                 </button>
                                 <button type="button" class="btn btn-primary" onclick="saveServerConfig()">
-                                    💾 Sauvegarder Configuration
+                                    <span>💾</span> <span data-i18n="save_config">Sauvegarder Configuration</span>
                                 </button>
                             </div>
                             <div class="config-warning">
@@ -700,10 +700,10 @@
                                     🔒 Configurer SSL
                                 </button>
                                 <button class="btn btn-warning" onclick="renewSSLCertificate()" disabled>
-                                    🔄 Renouveler Certificat
+                                    <span>🔄</span> <span data-i18n="renew_certificate">Renouveler Certificat</span>
                                 </button>
                                 <button class="btn btn-secondary" onclick="testSSLConfiguration()">
-                                    🧪 Tester SSL
+                                    <span>🧪</span> <span data-i18n="test_ssl">Tester SSL</span>
                                 </button>
                             </div>
                             
@@ -758,7 +758,7 @@
                                         <option value="ssl-error">Apache SSL Error</option>
                                         <option value="certbot">Certbot</option>
                                     </select>
-                                    <button class="btn btn-secondary" onclick="refreshSSLLogs()">🔄 Actualiser</button>
+                                    <button class="btn btn-secondary" onclick="refreshSSLLogs()"><span>🔄</span> <span data-i18n="refresh">Actualiser</span></button>
                                 </div>
                                 <div class="logs-container">
                                     <pre id="ssl-logs-content">Cliquez sur "Actualiser" pour charger les logs...</pre>
@@ -772,7 +772,7 @@
                                         <option value="http">Configuration HTTP</option>
                                         <option value="ssl">Configuration SSL</option>
                                     </select>
-                                    <button class="btn btn-secondary" onclick="refreshSSLConfig()">🔄 Actualiser</button>
+                                    <button class="btn btn-secondary" onclick="refreshSSLConfig()"><span>🔄</span> <span data-i18n="refresh">Actualiser</span></button>
                                 </div>
                                 <div class="config-container">
                                     <pre id="ssl-config-content">Sélectionnez un type de configuration...</pre>
@@ -793,7 +793,7 @@
                                 <option value="">Tous les clients</option>
                             </select>
                         </div>
-                        <button class="btn btn-primary" onclick="refreshNetworkData()">🔄 Actualiser</button>
+                        <button class="btn btn-primary" onclick="refreshNetworkData()"><span>🔄</span> <span data-i18n="refresh">Actualiser</span></button>
                     </div>
                     
                     <!-- Graphiques principaux -->
@@ -1024,10 +1024,10 @@
                     <div class="system-actions">
                         <h3>🔧 Actions</h3>
                         <div class="action-buttons">
-                            <button class="btn btn-secondary" onclick="refreshSystemInfo()">🔄 Actualiser</button>
-                            <button class="btn btn-primary" onclick="performHealthCheck()">🏥 Health Check</button>
-                            <button class="btn btn-warning" onclick="downloadLogs()">📋 Télécharger Logs</button>
-                            <button class="btn btn-success" onclick="exportConfig()">💾 Exporter Config</button>
+                            <button class="btn btn-secondary" onclick="refreshSystemInfo()"><span>🔄</span> <span data-i18n="refresh">Actualiser</span></button>
+                            <button class="btn btn-primary" onclick="performHealthCheck()"><span>🏥</span> <span data-i18n="health_check">Health Check</span></button>
+                            <button class="btn btn-warning" onclick="downloadLogs()"><span>📋</span> <span data-i18n="download_logs">Télécharger Logs</span></button>
+                            <button class="btn btn-success" onclick="exportConfig()"><span>💾</span> <span data-i18n="export_config">Exporter Config</span></button>
                         </div>
                     </div>
                 </section>
@@ -1107,11 +1107,11 @@
                             <div class="maintenance-actions">
                                 <button class="btn btn-primary" onclick="testAllConnections()">
                                     <span class="btn-icon">🔄</span>
-                                    Tester Toutes Connexions
+                                    <span data-i18n="test_all_connections">Tester Toutes Connexions</span>
                                 </button>
                                 <button class="btn btn-secondary" onclick="testFailedConnections()">
                                     <span class="btn-icon">⚡</span>
-                                    Tester Échecs
+                                    <span data-i18n="test_failures">Tester Échecs</span>
                                 </button>
                             </div>
                             <div id="connection-results" class="results-container" style="display: none;">
@@ -1192,8 +1192,8 @@
                     <div class="maintenance-log">
                         <h3>📋 Journal de Maintenance</h3>
                         <div class="log-controls">
-                            <button class="btn btn-sm btn-secondary" onclick="clearMaintenanceLog()">Vider</button>
-                            <button class="btn btn-sm btn-primary" onclick="downloadMaintenanceLog()">Télécharger</button>
+                            <button class="btn btn-sm btn-secondary" onclick="clearMaintenanceLog()" data-i18n="empty">Vider</button>
+                            <button class="btn btn-sm btn-primary" onclick="downloadMaintenanceLog()" data-i18n="download">Télécharger</button>
                         </div>
                         <div id="maintenance-log-content" class="log-content">
                             <div class="log-line">
@@ -1271,8 +1271,8 @@
                     <textarea name="folders" id="backup-folders" class="form-input" rows="3">C:\Users, C:\ProgramData</textarea>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Ajouter</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()" data-i18n="cancel">Annuler</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="add">Ajouter</button>
                 </div>
             </form>
         </div>
@@ -1314,8 +1314,8 @@
                     </ul>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
+                    <button type="button" class="btn btn-secondary" onclick="closePasswordModal()" data-i18n="cancel">Annuler</button>
+                    <button type="submit" class="btn btn-primary" data-i18n="change_password">Changer le mot de passe</button>
                 </div>
             </form>
         </div>

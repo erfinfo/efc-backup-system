@@ -1,9 +1,52 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm install:*)",
+      "Bash(npm start)",
+      "Bash(pm2 stop:*)",
+      "Bash(pm2 start:*)",
+      "Bash(curl:*)",
+      "Bash(git add:*)",
+      "Bash(pkill:*)",
+      "Bash(fuser:*)",
+      "Bash(PORT=3001 npm start)",
+      "Bash(pm2 delete:*)",
+      "Bash(sqlite3:*)",
+      "Bash(pm2 restart:*)",
+      "Bash(pm2 logs:*)",
+      "Bash(git push:*)",
+      "Bash(openssl rand:*)",
+      "Bash(grep:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Read(///**)",
+      "Bash(ssh:*)",
+      "Bash(ping:*)",
+      "Bash(echo $BACKUP_PATH)",
+      "Bash(chown:*)",
+      "Bash(chmod:*)",
+      "Bash(pm2 env:*)",
+      "Bash(BACKUP_PATH=/var/backups/efc-backup pm2 start src/index.js --name efc-backup)",
+      "Bash(npm run lint)",
+      "Bash(npm run:*)",
+      "Bash(find:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "Bash(git log:*)",
+      "Bash(pm2 list:*)",
+      "Bash(iptables:*)",
+      "Bash(ufw status:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/etc/apache2/sites-enabled",
+      "/tmp",
+      "/var/log/apache2",
+      "/var/backups",
+      "/",
+      "/backup"
+    ]
   }
 }

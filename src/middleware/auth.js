@@ -39,27 +39,46 @@ class AuthMiddleware {
     }
 
     static authenticateToken(req, res, next) {
+        // Essayer d'abord l'authentification par token JWT
         const authHeader = req.headers['authorization'];
         const token = authHeader && authHeader.split(' ')[1];
         
-        if (!token) {
-            const cookieToken = req.cookies?.auth_token;
-            if (!cookieToken) {
-                return res.status(401).json({ error: 'Token d\'authentification requis' });
-            }
-            req.token = cookieToken;
+        let userToken = null;
+        
+        if (token) {
+            userToken = token;
         } else {
-            req.token = token;
+            const cookieToken = req.cookies?.auth_token;
+            if (cookieToken) {
+                userToken = cookieToken;
+            }
         }
-
-        const decoded = AuthMiddleware.verifyToken(req.token);
-        if (!decoded) {
-            return res.status(403).json({ error: 'Token invalide ou expiré' });
+        
+        if (userToken) {
+            const decoded = AuthMiddleware.verifyToken(userToken);
+            if (decoded) {
+                req.user = decoded;
+                req.token = userToken;
+                logger.info(`Utilisateur authentifié via token: ${decoded.username} (${decoded.role})`);
+                return next();
+            }
+            logger.warn('Token JWT invalide ou expiré');
         }
-
-        req.user = decoded;
-        logger.info(`Utilisateur authentifié: ${decoded.username} (${decoded.role})`);
-        next();
+        
+        // Si pas de token ou token invalide, essayer l'authentification par session
+        if (req.session && req.session.user) {
+            req.user = req.session.user;
+            logger.info(`Utilisateur authentifié via session: ${req.user.username} (${req.user.role})`);
+            return next();
+        }
+        
+        // Aucune authentification valide trouvée
+        logger.warn('Requête suspecte:', {
+            hasToken: !!userToken,
+            hasSession: !!(req.session && req.session.user),
+            ip: req.ip
+        });
+        return res.status(401).json({ error: 'Token d\'authentification requis' });
     }
 
     static requireAdmin(req, res, next) {

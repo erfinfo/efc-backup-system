@@ -320,7 +320,7 @@ chmod -R 644 web/
 chmod 755 web/
 ```
 
-### 9. Problèmes de gestion des utilisateurs (v1.4.0+)
+### 9. Problèmes de gestion des utilisateurs (v1.4.1+)
 
 #### Symptômes
 - "Erreur lors du chargement des utilisateurs"

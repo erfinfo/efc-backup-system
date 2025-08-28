@@ -24,7 +24,7 @@ npm install
 
 # Configuration rapide
 echo "PORT=3000
-BACKUP_PATH=/var/backups/efc
+BACKUP_PATH=/backup
 RETENTION_DAYS=30
 ADMIN_PASSWORD=changeme123" > .env
 

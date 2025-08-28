@@ -13,8 +13,7 @@ class I18nManager {
         // Language preferences key for localStorage
         this.storageKey = 'efc-backup-language';
         
-        // Load translations on initialization
-        this.loadTranslations();
+        // Note: loadTranslations() is called in the auto-init section
     }
 
     /**
@@ -352,11 +351,17 @@ window.i18n = new I18nManager();
 
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        // Wait for translations to load
+        await window.i18n.loadTranslations();
         window.i18n.createLanguageSelector();
     });
 } else {
-    window.i18n.createLanguageSelector();
+    // If DOM is already loaded
+    (async () => {
+        await window.i18n.loadTranslations();
+        window.i18n.createLanguageSelector();
+    })();
 }
 
 // Export for module systems

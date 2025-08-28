@@ -1,6 +1,6 @@
 #!/bin/bash
 # EFC Backup System - Script d'installation automatique Linux
-# Version: 1.0.0
+# Version: 1.4.1
 # Auteur: EFC Informatique
 # Usage: ./install-linux.sh
 
@@ -17,7 +17,7 @@ NC='\033[0m' # No Color
 # Variables de configuration
 EFC_USER="efc-backup"
 EFC_HOME="/opt/efc-backup"
-BACKUP_DIR="/var/backups/efc"
+BACKUP_DIR="/backup"
 LOG_DIR="/var/log/efc-backup"
 CONFIG_DIR="/etc/efc-backup"
 SERVICE_NAME="efc-backup"
@@ -499,7 +499,7 @@ show_final_info() {
     echo "🌐 Interface web: http://$(hostname -I | awk '{print $1}'):3000"
     echo "👤 Utilisateur système: $EFC_USER"
     echo "📁 Dossier d'installation: $EFC_HOME"
-    echo "💾 Dossier de backup: $BACKUP_DIR"
+    echo "💾 Dossier de backup: $BACKUP_DIR (structure: /backup/[nom_client]/)"
     echo "📋 Logs: $LOG_DIR"
     
     # Afficher le mot de passe admin
