@@ -3647,15 +3647,15 @@ function setupUserInterface() {
         userInfo.innerHTML = `
             <div class="user-details">
                 <span class="user-name">${currentUser.username}</span>
-                <span class="user-role">${currentUser.role === 'admin' ? 'Administrateur' : 'Client'}</span>
+                <span class="user-role">${currentUser.role === 'admin' ? t('admin') : t('client_role')}</span>
                 ${currentUser.client_name ? `<span class="user-client">${currentUser.client_name}</span>` : ''}
             </div>
             <div class="user-actions">
                 <button class="change-password-btn" onclick="openPasswordModal()">
-                    Changer mot de passe
+                    ${t('change_password')}
                 </button>
                 <button class="btn btn-secondary" onclick="logout()">
-                    Déconnexion
+                    ${t('logout')}
                 </button>
             </div>
         `;

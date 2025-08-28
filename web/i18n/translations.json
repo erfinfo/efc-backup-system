@@ -200,6 +200,7 @@
     "no_backup_history_desc": "Aucun backup n'a encore été effectué.",
     "starting": "Démarrage...",
     "backup_in_progress": "Backup en cours",
+    "system_active": "Système Actif",
     
     "yes": "Oui",
     "no": "Non",
@@ -450,6 +451,7 @@
     "no_backup_history_desc": "No backup has been performed yet.",
     "starting": "Starting...",
     "backup_in_progress": "Backup in progress",
+    "system_active": "System Active",
     
     "yes": "Yes",
     "no": "No",
