@@ -334,10 +334,24 @@ class BackupScheduler {
 
     async calculateBackupSize(backupPath) {
         try {
-            const stats = await this.getDirSize(backupPath);
-            return Math.round(stats / (1024 * 1024)); // Convert to MB
+            if (!backupPath) return 0;
+            
+            const stat = await fs.stat(backupPath);
+            let size = 0;
+            
+            if (stat.isFile()) {
+                // Fichier unique (ex: .tar.gz)
+                size = stat.size;
+            } else if (stat.isDirectory()) {
+                // Dossier
+                size = await this.getDirSize(backupPath);
+            }
+            
+            const sizeMB = Math.round(size / (1024 * 1024));
+            logger.debug(`Taille calculée pour ${backupPath}: ${sizeMB} MB`);
+            return sizeMB;
         } catch (error) {
-            logger.warn(`Impossible de calculer la taille du backup ${backupPath}:`, error);
+            logger.warn(`Impossible de calculer la taille du backup ${backupPath}:`, error.message);
             return 0;
         }
     }

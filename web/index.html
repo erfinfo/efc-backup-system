@@ -16,6 +16,7 @@
                 <div>
                     <h2>EFC Backup</h2>
                     <p style="font-size: 0.75rem; color: rgba(180, 227, 165, 0.8); margin: 0; font-family: 'Noto Sans', sans-serif;" data-i18n="company">EFC Computing</p>
+                    <p id="app-version" style="font-size: 0.65rem; color: rgba(180, 227, 165, 0.6); margin: 0; font-family: 'Noto Sans', sans-serif;">v-</p>
                 </div>
             </div>
             <ul class="nav-menu">
@@ -25,6 +26,7 @@
                 <li><a href="#schedule" data-i18n="schedule">Planification</a></li>
                 <li><a href="#logs" data-i18n="logs">Logs</a></li>
                 <li><a href="#settings" data-i18n="settings">Paramètres</a></li>
+                <li><a href="#notifications">📧 Notifications</a></li>
                 <li><a href="#users" data-i18n="users">Utilisateurs</a></li>
                 <li><a href="#config">Configuration</a></li>
                 <li><a href="#ssl" data-i18n="ssl">SSL/HTTPS</a></li>
@@ -189,6 +191,152 @@
                             <input type="email" id="notification-email" class="form-input">
                         </div>
                         <button class="btn btn-primary" onclick="saveSettings()" data-i18n="save">Enregistrer</button>
+                    </div>
+                </section>
+                
+                <!-- Section Notifications Email -->
+                <section id="notifications-section" class="content-section">
+                    <h2>📧 Notifications Email</h2>
+                    
+                    <!-- Status des notifications -->
+                    <div class="notification-status-cards">
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <h3>Statut SMTP</h3>
+                            </div>
+                            <p class="stat-number" id="smtp-status">Chargement...</p>
+                            <small class="data-status" id="smtp-info">-</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <h3>Emails Envoyés</h3>
+                            </div>
+                            <p class="stat-number" id="emails-sent">-</p>
+                            <small class="data-status">Dernières 24h</small>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <h3>Dernière Notification</h3>
+                            </div>
+                            <p class="stat-number" id="last-notification">-</p>
+                            <small class="data-status" id="last-notification-type">-</small>
+                        </div>
+                    </div>
+
+                    <!-- Configuration SMTP -->
+                    <div class="card">
+                        <h3>⚙️ Configuration SMTP</h3>
+                        <form id="smtp-config-form">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="smtp-host">Serveur SMTP *</label>
+                                    <input type="text" id="smtp-host" name="smtp_host" required value="mail.smtp2go.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="smtp-port">Port</label>
+                                    <input type="number" id="smtp-port" name="smtp_port" value="2525">
+                                </div>
+                                <div class="form-group">
+                                    <label for="smtp-user">Nom d'utilisateur *</label>
+                                    <input type="text" id="smtp-user" name="smtp_user" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="smtp-pass">Mot de passe *</label>
+                                    <input type="password" id="smtp-pass" name="smtp_pass" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="notification-email">Email destinataire *</label>
+                                    <input type="email" id="notification-email" name="notification_email" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="smtp-secure">
+                                        <input type="checkbox" id="smtp-secure" name="smtp_secure">
+                                        SSL/TLS (port 465)
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-secondary" onclick="testSMTPConnection()">
+                                    🔍 Tester la connexion
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    💾 Sauvegarder
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Types de notifications -->
+                    <div class="card">
+                        <h3>🔔 Types de Notifications</h3>
+                        <div class="notification-toggles">
+                            <div class="toggle-group">
+                                <div class="toggle-item">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notify-success">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="toggle-info">
+                                        <strong>✅ Backups réussis</strong>
+                                        <p>Notification lors des backups terminés avec succès</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="toggle-item">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notify-failure">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="toggle-info">
+                                        <strong>❌ Backups échoués</strong>
+                                        <p>Notification lors des échecs de backup (recommandé)</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="toggle-item">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notify-start">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="toggle-info">
+                                        <strong>🔄 Backups démarrés</strong>
+                                        <p>Notification lors du démarrage des backups</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="toggle-item">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notify-system">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="toggle-info">
+                                        <strong>🚨 Alertes système</strong>
+                                        <p>Alertes d'espace disque, CPU, mémoire critiques</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="toggle-item">
+                                    <label class="switch">
+                                        <input type="checkbox" id="notify-startup">
+                                        <span class="slider"></span>
+                                    </label>
+                                    <div class="toggle-info">
+                                        <strong>⚡ Démarrage système</strong>
+                                        <p>Notification lors du démarrage du serveur backup</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-primary" onclick="saveNotificationSettings()">
+                                💾 Sauvegarder les paramètres
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="sendTestEmail()">
+                                📧 Envoyer email de test
+                            </button>
+                        </div>
                     </div>
                 </section>
                 
@@ -1219,7 +1367,7 @@
                     <div class="footer-links">
                         <a href="https://efcinfo.com" target="_blank">Site web</a>
                         <a href="mailto:erick@efcinfo.com">Support</a>
-                        <span id="app-version">Version 1.4.1</span>
+                        <span id="app-version">Version -</span>
                     </div>
                 </div>
             </footer>

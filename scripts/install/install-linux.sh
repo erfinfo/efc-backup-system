@@ -1,6 +1,6 @@
 #!/bin/bash
 # EFC Backup System - Script d'installation automatique Linux
-# Version: 1.4.1
+# Version: 1.5.0
 # Auteur: EFC Informatique
 # Usage: ./install-linux.sh
 

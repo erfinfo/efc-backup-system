@@ -20,7 +20,7 @@ class NotificationService {
         }
 
         try {
-            this.transporter = nodemailer.createTransporter({
+            this.transporter = nodemailer.createTransport({
                 host: process.env.SMTP_HOST,
                 port: parseInt(process.env.SMTP_PORT || '587'),
                 secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
@@ -48,7 +48,7 @@ class NotificationService {
 
         try {
             const mailOptions = {
-                from: `"EFC Backup System" <${process.env.SMTP_USER}>`,
+                from: `"EFC Backup System" <${process.env.NOTIFICATION_EMAIL}>`,
                 to: to,
                 subject: `[EFC Backup] ${subject}`,
                 text: text,

@@ -476,7 +476,10 @@ const getBackupStats = async () => {
     // Stats générales
     const totalResult = await db.get('SELECT COUNT(*) as count, SUM(size_mb) as totalSize FROM backups');
     stats.total = totalResult.count;
-    stats.totalSizeMB = totalResult.totalSize || 0;
+    
+    // Calculer seulement la taille des backups valides (size_mb > 0)
+    const validSizeResult = await db.get('SELECT SUM(size_mb) as totalValidSize FROM backups WHERE size_mb > 0');
+    stats.totalSizeMB = validSizeResult.totalValidSize || 0;
     
     if (stats.total > 0) {
         stats.avgSizeMB = Math.round(stats.totalSizeMB / stats.total);

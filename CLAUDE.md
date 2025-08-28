@@ -136,7 +136,8 @@ npm run lint
 
 Le système utilise des variables d'environnement (fichier `.env`):
 
-**Serveur & Base de données:**
+**Version & Serveur:**
+- `VERSION` - Version actuelle du système EFC Backup (ex: 1.5.0)
 - `PORT` - Port du serveur (défaut: 3000)
 - `DB_PATH` - Chemin de la base SQLite
 - `NODE_ENV` - Environnement (production/development)
@@ -205,6 +206,7 @@ Le système EFC Backup prend en charge les clients Windows et Linux avec des mod
 ### Notes de Développement
 
 - L'interface web est standalone avec branding EFC en mode sombre
+- **INTERFACE PROFESSIONNELLE** : Éviter les icônes emoji dans l'interface (🎯, 📧, etc.) - préférer du texte simple ou icônes SVG pour un rendu professionnel
 - Architecture modulaire avec séparation des responsabilités
 - Base de données SQLite intégrée avec migrations automatiques
 - Système de logs avancé avec rotation automatique et niveaux par client

@@ -1,5 +1,5 @@
 # EFC Backup System - Script d'installation automatique Windows
-# Version: 1.4.1
+# Version: 1.5.0
 # Auteur: EFC Informatique
 # Usage: Exécuter en tant qu'Administrateur
 # PowerShell -ExecutionPolicy Bypass -File install-windows.ps1
@@ -7,7 +7,7 @@
 #Requires -RunAsAdministrator
 
 # Configuration
-$EFC_VERSION = "1.4.1"
+$EFC_VERSION = "1.5.0"
 $EFC_URL = "https://nodejs.org/dist/v18.19.0/node-v18.19.0-x64.msi"
 $INSTALL_DIR = "C:\Program Files\EFC-Backup"
 $DATA_DIR = "C:\ProgramData\EFC-Backup"

@@ -30,6 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeApp() {
+    // Charger et afficher la version
+    loadAppVersion();
+
     // Initialiser la navigation
     const navLinks = document.querySelectorAll('.nav-menu a');
     navLinks.forEach(link => {
@@ -48,6 +51,21 @@ function initializeApp() {
 
     // Charger les données initiales
     setInterval(updateDashboard, 30000); // Mise à jour toutes les 30 secondes
+}
+
+async function loadAppVersion() {
+    try {
+        const response = await fetch(`${API_URL}/version`);
+        if (response.ok) {
+            const data = await response.json();
+            const versionElement = document.getElementById('app-version');
+            if (versionElement && data.version) {
+                versionElement.textContent = `v${data.version}`;
+            }
+        }
+    } catch (error) {
+        console.error('Erreur lors du chargement de la version:', error);
+    }
 }
 
 function setupEventListeners() {
@@ -91,6 +109,7 @@ function navigateToSection(section) {
         'schedule': i18n.t('schedule'),
         'logs': i18n.t('logs'),
         'settings': i18n.t('settings'),
+        'notifications': '📧 Notifications Email',
         'users': i18n.t('users'),
         'config': i18n.t('general_settings'),
         'ssl': i18n.t('ssl_certificates'),
@@ -116,8 +135,18 @@ async function loadDashboardData() {
             // Mettre à jour les statistiques
             document.getElementById('active-clients').textContent = data.summary.activeClients || '0';
             document.getElementById('today-backups').textContent = data.summary.todayBackups || '0';
-            document.getElementById('storage-used').textContent = 
-                data.summary.storageUsedMB ? `${(data.summary.storageUsedMB / 1024).toFixed(1)} GB` : '0 GB';
+            const storageUsedGB = data.summary.storageUsedMB ? (data.summary.storageUsedMB / 1024).toFixed(1) : '0';
+            document.getElementById('storage-used').textContent = `${storageUsedGB} GB`;
+            
+            // Mettre à jour le status avec info détaillée
+            const storageStatus = document.getElementById('storage-status');
+            if (data.system.diskInfo) {
+                const diskUsedGB = data.system.diskInfo.used || 0;
+                const diskTotalGB = data.system.diskInfo.total || 0;
+                storageStatus.textContent = `Backups: ${storageUsedGB} GB / Disque: ${diskUsedGB}/${diskTotalGB} GB`;
+            } else {
+                storageStatus.textContent = `Fichiers de backup: ${storageUsedGB} GB`;
+            }
             document.getElementById('last-run').textContent = 
                 data.summary.lastRun ? window.i18n.formatDate(new Date(data.summary.lastRun)) : '-';
             
@@ -330,6 +359,9 @@ async function loadSectionData(section) {
             break;
         case 'settings':
             loadSettings();
+            break;
+        case 'notifications':
+            loadNotificationSettings();
             break;
         case 'users':
             loadUsersPage();
@@ -717,7 +749,7 @@ async function loadSystemInfo() {
         ]);
 
         // Mise à jour de la version dans le footer
-        updateElement('app-version', `Version ${apiInfo.version || '1.4.1'}`);
+        updateElement('app-version', `Version ${apiInfo.version || '1.5.0'}`);
 
         // Mise à jour des informations serveur
         updateElement('os-info', `${systemStatus.system.os}`);
@@ -842,7 +874,7 @@ function exportConfig() {
     // Exporter la configuration système
     const config = {
         timestamp: new Date().toISOString(),
-        version: '1.4.1',
+        version: '1.5.0',
         server: {
             port: 3000,
             host: '0.0.0.0',
@@ -5161,3 +5193,206 @@ async function downloadBackup(backupId) {
         showNotification(`Erreur lors du téléchargement: ${error.message}`, 'error');
     }
 }
+
+// ========================================
+// FONCTIONS NOTIFICATIONS EMAIL
+// ========================================
+
+async function loadNotificationSettings() {
+    try {
+        const response = await fetch(`${API_URL}/notifications/config`);
+        if (response.ok) {
+            const config = await response.json();
+            
+            // Charger les paramètres SMTP
+            document.getElementById('smtp-host').value = config.smtp_host || 'mail.smtp2go.com';
+            document.getElementById('smtp-port').value = config.smtp_port || '2525';
+            document.getElementById('smtp-user').value = config.smtp_user || '';
+            document.getElementById('smtp-pass').value = config.smtp_pass || '';
+            document.getElementById('notification-email').value = config.notification_email || '';
+            document.getElementById('smtp-secure').checked = config.smtp_secure || false;
+            
+            // Charger les toggles de notification
+            document.getElementById('notify-success').checked = config.send_success_notifications || false;
+            document.getElementById('notify-failure').checked = config.send_failure_notifications || false;
+            document.getElementById('notify-start').checked = config.send_start_notifications || false;
+            document.getElementById('notify-system').checked = config.send_system_notifications || false;
+            document.getElementById('notify-startup').checked = config.send_startup_notifications || false;
+            
+            // Mettre à jour les status
+            const statusElement = document.getElementById('smtp-status');
+            if (config.smtp_configured && config.smtp_enabled) {
+                statusElement.textContent = '✅ Connecté';
+                statusElement.className = 'stat-number connected';
+                document.getElementById('smtp-info').textContent = `${config.smtp_host}:${config.smtp_port}`;
+            } else {
+                statusElement.textContent = '❌ Non configuré';
+                statusElement.className = 'stat-number disconnected';
+                document.getElementById('smtp-info').textContent = 'Configuration requise';
+            }
+            
+            // Statistiques (si disponibles)
+            document.getElementById('emails-sent').textContent = config.stats?.emails_sent_24h || '0';
+            document.getElementById('last-notification').textContent = config.stats?.last_notification_date || '-';
+            document.getElementById('last-notification-type').textContent = config.stats?.last_notification_type || '-';
+            
+        } else {
+            showNotification('Erreur lors du chargement de la configuration', 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showNotification('Erreur de connexion', 'error');
+    }
+}
+
+async function testSMTPConnection() {
+    const button = document.querySelector('button[onclick="testSMTPConnection()"]');
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '🔄 Test en cours...';
+    button.disabled = true;
+    
+    // Mettre à jour le status pendant le test
+    const statusElement = document.getElementById('smtp-status');
+    statusElement.textContent = '🔄 Test...';
+    statusElement.className = 'stat-number testing';
+    
+    try {
+        const response = await fetch(`${API_URL}/notifications/test-smtp`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                smtp_host: document.getElementById('smtp-host').value,
+                smtp_port: parseInt(document.getElementById('smtp-port').value),
+                smtp_user: document.getElementById('smtp-user').value,
+                smtp_pass: document.getElementById('smtp-pass').value,
+                smtp_secure: document.getElementById('smtp-secure').checked,
+                notification_email: document.getElementById('notification-email').value
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            statusElement.textContent = '✅ Test réussi';
+            statusElement.className = 'stat-number connected';
+            document.getElementById('smtp-info').textContent = 'Email de test envoyé';
+            showNotification('✅ Test SMTP réussi \! Email envoyé avec succès.', 'success');
+        } else {
+            statusElement.textContent = '❌ Test échoué';
+            statusElement.className = 'stat-number disconnected';
+            document.getElementById('smtp-info').textContent = result.error || 'Erreur inconnue';
+            showNotification(`❌ Test SMTP échoué: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        statusElement.textContent = '❌ Erreur';
+        statusElement.className = 'stat-number disconnected';
+        document.getElementById('smtp-info').textContent = error.message;
+        showNotification('Erreur lors du test de connexion', 'error');
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+async function saveNotificationSettings() {
+    const button = document.querySelector('button[onclick="saveNotificationSettings()"]');
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '💾 Sauvegarde...';
+    button.disabled = true;
+    
+    try {
+        const config = {
+            smtp_enabled: document.getElementById('notify-success').checked || 
+                         document.getElementById('notify-failure').checked || 
+                         document.getElementById('notify-start').checked ||
+                         document.getElementById('notify-system').checked ||
+                         document.getElementById('notify-startup').checked,
+            smtp_host: document.getElementById('smtp-host').value,
+            smtp_port: parseInt(document.getElementById('smtp-port').value),
+            smtp_user: document.getElementById('smtp-user').value,
+            smtp_pass: document.getElementById('smtp-pass').value,
+            smtp_secure: document.getElementById('smtp-secure').checked,
+            notification_email: document.getElementById('notification-email').value,
+            send_success_notifications: document.getElementById('notify-success').checked,
+            send_failure_notifications: document.getElementById('notify-failure').checked,
+            send_start_notifications: document.getElementById('notify-start').checked,
+            send_system_notifications: document.getElementById('notify-system').checked,
+            send_startup_notifications: document.getElementById('notify-startup').checked
+        };
+        
+        const response = await fetch(`${API_URL}/notifications/config`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(config)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Configuration sauvegardée avec succès', 'success');
+            loadNotificationSettings(); // Recharger pour synchroniser
+        } else {
+            showNotification(`❌ Erreur: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showNotification('Erreur lors de la sauvegarde', 'error');
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+async function sendTestEmail() {
+    const button = document.querySelector('button[onclick="sendTestEmail()"]');
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '📧 Envoi...';
+    button.disabled = true;
+    
+    try {
+        const response = await fetch(`${API_URL}/notifications/send-test`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Email de test envoyé avec succès \!', 'success');
+            
+            // Mettre à jour les stats
+            const currentCount = parseInt(document.getElementById('emails-sent').textContent) || 0;
+            document.getElementById('emails-sent').textContent = (currentCount + 1).toString();
+            document.getElementById('last-notification').textContent = new Date().toLocaleString('fr-FR');
+            document.getElementById('last-notification-type').textContent = 'Test';
+        } else {
+            showNotification(`❌ Erreur: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showNotification('Erreur lors de l\'envoi de l\'email', 'error');
+    } finally {
+        button.innerHTML = originalText;
+        button.disabled = false;
+    }
+}
+
+// Formulaire SMTP - soumission
+document.addEventListener('DOMContentLoaded', () => {
+    const smtpForm = document.getElementById('smtp-config-form');
+    if (smtpForm) {
+        smtpForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await saveNotificationSettings();
+        });
+    }
+});

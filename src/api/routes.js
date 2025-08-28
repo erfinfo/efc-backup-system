@@ -47,6 +47,16 @@ router.use((req, res, next) => {
     next();
 });
 
+// Route publique pour la version
+router.get('/version', (req, res) => {
+    res.json({
+        version: process.env.VERSION || '1.0.0',
+        name: 'EFC Backup System',
+        node_version: process.version,
+        uptime: process.uptime()
+    });
+});
+
 // Routes Dashboard (authentification requise)
 router.get('/dashboard', AuthMiddleware.authenticateToken, async (req, res) => {
     try {
@@ -72,7 +82,9 @@ router.get('/dashboard', AuthMiddleware.authenticateToken, async (req, res) => {
                 uptime: systemStatus.nodejs.uptime,
                 cpuUsage: systemStatus.cpu.usage,
                 memoryUsage: systemStatus.memory.usagePercent,
-                diskUsage: systemStatus.disk.backup ? systemStatus.disk.backup.usagePercent : 0
+                diskUsage: systemStatus.disk.backup ? systemStatus.disk.backup.usagePercent : 0,
+                diskInfo: systemStatus.disk.backup || null,
+                backupStorageMB: backupStats.totalSizeMB
             },
             scheduler: scheduleStatus,
             recentActivity: await getActivityLogs(10)
@@ -569,7 +581,7 @@ router.get('/network/stats/:clientName', AuthMiddleware.requireClientAccess, asy
 router.get('/info', (req, res) => {
     res.json({
         name: 'EFC Backup System API',
-        version: '1.4.1',
+        version: process.env.VERSION || '1.5.0',
         author: 'EFC Informatique',
         website: 'https://efcinfo.com',
         node: process.version,
@@ -1230,6 +1242,208 @@ router.post('/backups/restore/:backupId', AuthMiddleware.authenticateToken, asyn
     } catch (error) {
         logger.error('Erreur restauration backup:', error);
         res.status(500).json({ error: 'Erreur lors de la restauration du backup' });
+    }
+});
+
+// ========================================
+// ROUTES NOTIFICATIONS EMAIL
+// ========================================
+
+// Récupérer la configuration des notifications
+router.get('/notifications/config', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { notificationService } = require('../utils/notification');
+        const stats = await notificationService.getNotificationStats();
+        
+        const config = {
+            smtp_enabled: process.env.SMTP_ENABLED === 'true',
+            smtp_configured: stats.configured,
+            smtp_host: process.env.SMTP_HOST,
+            smtp_port: process.env.SMTP_PORT,
+            smtp_user: process.env.SMTP_USER,
+            smtp_pass: process.env.SMTP_PASS ? '••••••••' : '',
+            smtp_secure: process.env.SMTP_SECURE === 'true',
+            notification_email: process.env.NOTIFICATION_EMAIL,
+            send_success_notifications: process.env.SEND_SUCCESS_NOTIFICATIONS === 'true',
+            send_failure_notifications: process.env.SEND_FAILURE_NOTIFICATIONS !== 'false',
+            send_start_notifications: process.env.SEND_START_NOTIFICATIONS === 'true',
+            send_system_notifications: process.env.SEND_SYSTEM_NOTIFICATIONS === 'true',
+            send_startup_notifications: process.env.SEND_STARTUP_NOTIFICATIONS === 'true',
+            stats: {
+                emails_sent_24h: 0, // TODO: implémenter le comptage depuis les logs
+                last_notification_date: '-',
+                last_notification_type: '-'
+            }
+        };
+        
+        res.json(config);
+    } catch (error) {
+        logger.error('Erreur récupération config notifications:', error);
+        res.status(500).json({ error: 'Erreur lors de la récupération de la configuration' });
+    }
+});
+
+// Sauvegarder la configuration des notifications
+router.post('/notifications/config', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const {
+            smtp_enabled, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure,
+            notification_email, send_success_notifications, send_failure_notifications,
+            send_start_notifications, send_system_notifications, send_startup_notifications
+        } = req.body;
+        
+        // Validation basique
+        if (smtp_enabled && (!smtp_host || !smtp_user || !smtp_pass || !notification_email)) {
+            return res.status(400).json({ 
+                error: 'Configuration SMTP incomplète. Veuillez remplir tous les champs obligatoires.' 
+            });
+        }
+        
+        // Sauvegarder les variables d'environnement (en production, utiliser une base de données ou fichier sécurisé)
+        const fs = require('fs').promises;
+        const path = require('path');
+        const envPath = path.join(__dirname, '../../.env');
+        
+        let envContent = await fs.readFile(envPath, 'utf8');
+        
+        // Fonction helper pour mettre à jour une variable d'environnement
+        const updateEnvVar = (content, key, value) => {
+            const regex = new RegExp(`^${key}=.*$`, 'm');
+            const line = `${key}=${value}`;
+            return regex.test(content) ? content.replace(regex, line) : content + `\n${line}`;
+        };
+        
+        envContent = updateEnvVar(envContent, 'SMTP_ENABLED', smtp_enabled);
+        envContent = updateEnvVar(envContent, 'SMTP_HOST', smtp_host || '');
+        envContent = updateEnvVar(envContent, 'SMTP_PORT', smtp_port || '587');
+        envContent = updateEnvVar(envContent, 'SMTP_USER', smtp_user || '');
+        if (smtp_pass && smtp_pass !== '••••••••') {
+            envContent = updateEnvVar(envContent, 'SMTP_PASS', smtp_pass);
+        }
+        envContent = updateEnvVar(envContent, 'SMTP_SECURE', smtp_secure || false);
+        envContent = updateEnvVar(envContent, 'NOTIFICATION_EMAIL', notification_email || '');
+        envContent = updateEnvVar(envContent, 'SEND_SUCCESS_NOTIFICATIONS', send_success_notifications || false);
+        envContent = updateEnvVar(envContent, 'SEND_FAILURE_NOTIFICATIONS', send_failure_notifications !== false);
+        envContent = updateEnvVar(envContent, 'SEND_START_NOTIFICATIONS', send_start_notifications || false);
+        envContent = updateEnvVar(envContent, 'SEND_SYSTEM_NOTIFICATIONS', send_system_notifications || false);
+        envContent = updateEnvVar(envContent, 'SEND_STARTUP_NOTIFICATIONS', send_startup_notifications || false);
+        
+        await fs.writeFile(envPath, envContent);
+        
+        // Recharger les variables d'environnement
+        require('dotenv').config({ override: true });
+        
+        // Réinitialiser le service de notification
+        const { notificationService } = require('../utils/notification');
+        notificationService.init();
+        
+        logger.info(`Configuration notifications mise à jour par ${req.user.username}`);
+        res.json({ success: true, message: 'Configuration sauvegardée avec succès' });
+        
+    } catch (error) {
+        logger.error('Erreur sauvegarde config notifications:', error);
+        res.status(500).json({ error: 'Erreur lors de la sauvegarde de la configuration' });
+    }
+});
+
+// Tester la configuration SMTP
+router.post('/notifications/test-smtp', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_secure, notification_email } = req.body;
+        
+        if (!smtp_host || !smtp_user || !smtp_pass || !notification_email) {
+            return res.status(400).json({ error: 'Paramètres SMTP manquants' });
+        }
+        
+        // Créer un transporteur temporaire pour le test
+        const nodemailer = require('nodemailer');
+        const testTransporter = nodemailer.createTransport({
+            host: smtp_host,
+            port: parseInt(smtp_port),
+            secure: smtp_secure,
+            auth: {
+                user: smtp_user,
+                pass: smtp_pass
+            },
+            tls: {
+                rejectUnauthorized: false
+            }
+        });
+        
+        // Tester la connexion
+        await testTransporter.verify();
+        
+        // Envoyer un email de test
+        await testTransporter.sendMail({
+            from: `"EFC Backup System" <${notification_email}>`,
+            to: notification_email,
+            subject: '[EFC Backup] Test de configuration SMTP',
+            text: `Test de configuration SMTP réussi !
+
+Ce message confirme que la configuration SMTP est correcte et fonctionnelle.
+
+Serveur: ${smtp_host}:${smtp_port}
+Utilisateur: ${smtp_user}
+Sécurité: ${smtp_secure ? 'SSL/TLS' : 'Non'}
+Date: ${new Date().toLocaleString('fr-FR')}
+
+EFC Backup System - Configuration validée avec succès.`,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <div style="background: linear-gradient(135deg, #5d8052, #a8d49a); color: white; padding: 20px; text-align: center;">
+                        <h1>✅ Test SMTP Réussi</h1>
+                        <p>EFC Backup System</p>
+                    </div>
+                    <div style="padding: 20px; background: #f9f9f9;">
+                        <p>Ce message confirme que la configuration SMTP est correcte et fonctionnelle.</p>
+                        <ul>
+                            <li><strong>Serveur:</strong> ${smtp_host}:${smtp_port}</li>
+                            <li><strong>Utilisateur:</strong> ${smtp_user}</li>
+                            <li><strong>Sécurité:</strong> ${smtp_secure ? 'SSL/TLS' : 'Non'}</li>
+                            <li><strong>Date:</strong> ${new Date().toLocaleString('fr-FR')}</li>
+                        </ul>
+                        <p style="color: #5d8052; font-weight: bold;">Configuration validée avec succès !</p>
+                    </div>
+                </div>
+            `
+        });
+        
+        logger.info(`Test SMTP réussi par ${req.user.username} vers ${notification_email}`);
+        res.json({ 
+            success: true, 
+            message: 'Test SMTP réussi, email envoyé avec succès' 
+        });
+        
+    } catch (error) {
+        logger.error('Erreur test SMTP:', error);
+        res.status(400).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+// Envoyer un email de test
+router.post('/notifications/send-test', AuthMiddleware.authenticateToken, async (req, res) => {
+    try {
+        const { notificationService } = require('../utils/notification');
+        const result = await notificationService.testConfiguration();
+        
+        if (result.success) {
+            logger.info(`Email de test envoyé par ${req.user.username}`);
+            res.json({ 
+                success: true, 
+                message: result.message || 'Email de test envoyé avec succès' 
+            });
+        } else {
+            res.status(400).json({ 
+                success: false, 
+                error: result.error 
+            });
+        }
+    } catch (error) {
+        logger.error('Erreur envoi email test:', error);
+        res.status(500).json({ error: 'Erreur lors de l\'envoi de l\'email de test' });
     }
 });
 
