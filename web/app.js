@@ -219,13 +219,13 @@ async function loadBasicStats() {
         document.getElementById('storage-used').textContent = 
             totalStorage > 1024 ? `${(totalStorage / 1024).toFixed(1)} GB` : `${totalStorage} MB`;
         document.getElementById('last-run').textContent = 
-            backupsToday > 0 ? 'Données récentes disponibles' : 'Aucun backup récent';
+            backupsToday > 0 ? t('recent_data_available') : t('no_recent_backup');
 
         // Mettre à jour les indicateurs de status
         updateDataStatus('clients-status', clientsCount > 0 ? 'real-data' : 'fallback-data', 
-                         clientsCount > 0 ? 'Données réelles' : 'Aucun client actif');
+                         clientsCount > 0 ? t('real_data') : t('no_active_client'));
         updateDataStatus('backups-status', backupsToday > 0 ? 'real-data' : 'fallback-data', 
-                         backupsToday > 0 ? 'Données du jour' : 'Aucun backup aujourd\'hui');
+                         backupsToday > 0 ? t('today_data') : t('no_backup_today'));
         updateDataStatus('storage-status', totalStorage > 0 ? 'real-data' : 'fallback-data', 
                          totalStorage > 0 ? 'Calcul réel' : 'Pas de données');
         updateDataStatus('lastrun-status', 'real-data', 'Statut en temps réel');
@@ -272,11 +272,11 @@ function showNoBackupsMessage() {
             <td colspan="6" class="empty-cell">
                 <div class="no-data-message">
                     <span class="no-data-icon">📋</span>
-                    <h4>Aucun backup récent</h4>
-                    <p>Aucun backup n'a été effectué récemment.</p>
+                    <h4>${t('no_recent_backup')}</h4>
+                    <p>${t('no_recent_backup_desc')}</p>
                     <div class="no-data-actions">
                         <button class="btn btn-primary" onclick="navigateToSection('clients')">
-                            ➕ Configurer des clients
+                            <span>➕</span> ${t('configure_clients')}
                         </button>
                         <button class="btn btn-secondary" onclick="navigateToSection('schedule')">
                             ⏰ Planifier des backups
@@ -395,23 +395,23 @@ async function loadClients() {
                             <span>Utilisateur: ${client.username}</span>
                             <span>OS: <span class="badge badge-${client.os_type === 'windows' ? 'primary' : 'info'}">${client.os_type === 'windows' ? '🪟 Windows' : '🐧 Linux'}</span></span>
                             <span>Type: ${client.backup_type || 'full'}</span>
-                            <span>Statut: <span class="badge badge-${client.active ? 'success' : 'danger'}">${client.active ? 'Actif' : 'Inactif'}</span></span>
+                            <span>${t('status')}: <span class="badge badge-${client.active ? 'success' : 'danger'}">${client.active ? t('active') : t('inactive')}</span></span>
                             <span>Créé: ${new Date(client.created_at).toLocaleDateString('fr-FR')}</span>
                         </div>
                         <div class="client-actions">
                             <button class="btn btn-success btn-sm" id="backup-btn-${client.id}" onclick="startManualBackup(${client.id})" ${!client.active ? 'disabled' : ''}>
                                 <span class="btn-icon">🚀</span>
-                                Démarrer Backup
+                                ${t('start_backup')}
                             </button>
-                            <button class="btn btn-secondary btn-sm" onclick="editClient(${client.id})">Modifier</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteClientConfirm(${client.id})">Supprimer</button>
+                            <button class="btn btn-secondary btn-sm" onclick="editClient(${client.id})">${t('edit')}</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteClientConfirm(${client.id})">${t('delete')}</button>
                         </div>
                     </div>
                 `).join('');
             } else {
                 clientsList.innerHTML = `
                     <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-                        <p style="font-size: 1.2rem; margin-bottom: 1rem;">Aucun client configuré</p>
+                        <p style="font-size: 1.2rem; margin-bottom: 1rem;">${t('no_client_configured')}</p>
                         <button class="btn btn-primary" onclick="showAddClientModal()">
                             ➕ Ajouter votre premier client
                         </button>
@@ -430,7 +430,7 @@ async function loadClients() {
         clientsList.innerHTML = `
             <div style="text-align: center; padding: 2rem; color: var(--danger-color);">
                 <p>Erreur lors du chargement des clients</p>
-                <button class="btn btn-secondary" onclick="loadClients()">Réessayer</button>
+                <button class="btn btn-secondary" onclick="loadClients()">${t('retry')}</button>
             </div>
         `;
     }
@@ -471,12 +471,12 @@ async function loadBackupsHistory() {
                                     <td>${backup.size_mb ? `${(backup.size_mb / 1024).toFixed(1)} GB` : '-'}</td>
                                     <td>${backup.duration || '-'}</td>
                                     <td><span class="badge badge-${backup.status === 'completed' ? 'success' : 'danger'}">
-                                        ${backup.status === 'completed' ? 'Réussi' : 'Échoué'}
+                                        ${backup.status === 'completed' ? t('success') : t('failed')}
                                     </span></td>
                                     <td>
-                                        <button class="btn btn-sm" onclick="viewBackupDetails('${backup.backup_id}')">Détails</button>
+                                        <button class="btn btn-sm" onclick="viewBackupDetails('${backup.backup_id}')">${t('details')}</button>
                                         ${backup.status === 'completed' ? 
-                                          `<button class="btn btn-sm" onclick="downloadBackup('${backup.backup_id}')">Télécharger</button>` : ''
+                                          `<button class="btn btn-sm" onclick="downloadBackup('${backup.backup_id}')">${t('download')}</button>` : ''
                                         }
                                     </td>
                                 </tr>
@@ -488,11 +488,11 @@ async function loadBackupsHistory() {
                 backupsHistory.innerHTML = `
                     <div class="no-data-message">
                         <span class="no-data-icon">📋</span>
-                        <h4>Aucun backup dans l'historique</h4>
-                        <p>Aucun backup n'a encore été effectué.</p>
+                        <h4>${t('no_backup_history')}</h4>
+                        <p>${t('no_backup_history_desc')}</p>
                         <div class="no-data-actions">
                             <button class="btn btn-primary" onclick="navigateToSection('clients')">
-                                ➕ Configurer des clients
+                                <span>➕</span> ${t('configure_clients')}
                             </button>
                             <button class="btn btn-secondary" onclick="navigateToSection('schedule')">
                                 ⏰ Planifier des backups
@@ -569,7 +569,7 @@ async function loadSchedule() {
                                 ➕ Créer une planification
                             </button>
                             <button class="btn btn-secondary" onclick="navigateToSection('clients')">
-                                👥 Configurer des clients d'abord
+                                <span>👥</span> ${t('configure_clients_first')}
                             </button>
                         </div>
                     </div>
@@ -606,7 +606,7 @@ async function loadClientsWithLogs() {
         const logClientSelect = document.getElementById('log-client');
         if (logClientSelect) {
             // Conserver l'option "Logs globaux"
-            logClientSelect.innerHTML = '<option value="">Logs globaux</option>';
+            logClientSelect.innerHTML = `<option value="">${t('global_logs')}</option>`;
             
             // Ajouter les clients qui ont des logs
             clientsWithLogs.forEach(client => {
@@ -1140,19 +1140,19 @@ function showAddScheduleModal() {
                 <div class="form-group">
                     <label for="schedule-type">Type de backup:</label>
                     <select id="schedule-type" class="form-control">
-                        <option value="full">Complet</option>
-                        <option value="incremental">Incrémentiel</option>
-                        <option value="differential">Différentiel</option>
+                        <option value="full">${t('full')}</option>
+                        <option value="incremental">${t('incremental')}</option>
+                        <option value="differential">${t('differential')}</option>
                     </select>
                 </div>
                 
                 <div class="form-group">
                     <label for="schedule-frequency">Fréquence:</label>
                     <select id="schedule-frequency" class="form-control" onchange="updateCronFields(this.value)">
-                        <option value="daily">Quotidien</option>
-                        <option value="weekly">Hebdomadaire</option>
-                        <option value="monthly">Mensuel</option>
-                        <option value="custom">Personnalisé (Cron)</option>
+                        <option value="daily">${t('daily')}</option>
+                        <option value="weekly">${t('weekly')}</option>
+                        <option value="monthly">${t('monthly')}</option>
+                        <option value="custom">${t('custom')}</option>
                     </select>
                 </div>
                 
@@ -1577,7 +1577,7 @@ function openQuickRestore() {
     modal.innerHTML = `
         <div class="modal-content">
             <div class="modal-header">
-                <h2>🔄 Restauration Rapide</h2>
+                <h2><span>🔄</span> ${t('quick_restore')}</h2>
                 <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
             </div>
             <div class="modal-body">
@@ -1751,7 +1751,7 @@ function showBackupTypeModal(clientId, clientName) {
         <div class="modal active" id="backup-type-modal">
             <div class="modal-content">
                 <span class="close" onclick="closeBackupTypeModal()">&times;</span>
-                <h2>🚀 Démarrer Backup Manuel</h2>
+                <h2><span>🚀</span> ${t('start_manual_backup')}</h2>
                 <p><strong>Client:</strong> ${clientName}</p>
                 
                 <div class="backup-type-selection">
@@ -1913,7 +1913,7 @@ function updateBackupStatus(clientId, status) {
         }
         if (progressStep) progressStep.textContent = status.currentStep || 'En cours...';
         if (progressPercent) progressPercent.textContent = `${status.progress}%`;
-        if (statusText) statusText.textContent = status.status === 'starting' ? 'Démarrage...' : 'Backup en cours';
+        if (statusText) statusText.textContent = status.status === 'starting' ? t('starting') : t('backup_in_progress');
         if (statusTime && status.startTime) {
             statusTime.textContent = `Démarré: ${new Date(status.startTime).toLocaleString('fr-FR', {
                 month: '2-digit',
@@ -1945,7 +1945,7 @@ function updateBackupStatus(clientId, status) {
         // Réactiver le bouton
         if (backupBtn) {
             backupBtn.disabled = false;
-            backupBtn.innerHTML = '<span class="btn-icon">🚀</span>Démarrer Backup';
+            backupBtn.innerHTML = `<span class="btn-icon">🚀</span>${t('start_backup')}`;
         }
         
         // Auto-masquer après 30 secondes
@@ -1964,7 +1964,7 @@ function updateBackupStatus(clientId, status) {
         // Réactiver le bouton
         if (backupBtn) {
             backupBtn.disabled = false;
-            backupBtn.innerHTML = '<span class="btn-icon">🚀</span>Démarrer Backup';
+            backupBtn.innerHTML = `<span class="btn-icon">🚀</span>${t('start_backup')}`;
         }
         
         // Auto-masquer après 60 secondes
@@ -1989,7 +1989,7 @@ function showBackupProgressModal(clientId, clientName, backupType, backupId) {
     modal.innerHTML = `
         <div class="modal-content backup-progress-content">
             <div class="modal-header">
-                <h2>🚀 Backup en cours</h2>
+                <h2><span>🚀</span> ${t('backup_in_progress')}</h2>
                 <button class="close-btn" onclick="closeBackupProgressModal()">×</button>
             </div>
             
@@ -2060,7 +2060,7 @@ function minimizeBackupProgressModal() {
         modal.innerHTML = `
             <div class="modal-content-minimized">
                 <div class="minimized-info">
-                    <span>Backup en cours...</span>
+                    <span>${t('backup_in_progress')}...</span>
                     <div class="minimized-progress">
                         <div class="progress-bar-fill" id="progress-bar-minimized" style="width: 0%"></div>
                     </div>
